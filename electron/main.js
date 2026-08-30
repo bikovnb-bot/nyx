@@ -1,4 +1,4 @@
-import { app, Tray, Menu, nativeImage, BrowserWindow, ipcMain, Notification, shell, dialog, clipboard } from "electron";
+import { app, Tray, Menu, nativeImage, BrowserWindow, ipcMain, Notification, shell, dialog, clipboard, safeStorage } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { writeFileSync, mkdtempSync, readFileSync } from "node:fs";
@@ -8,7 +8,7 @@ import http from "node:http";
 import { parseVlessLink } from "../src/parseLink.js";
 import { buildSingBoxConfig, CLASH_API_ADDRESS } from "../src/configBuilder.js";
 import { runSingBox, getSingBoxVersion } from "../src/singbox.js";
-import { loadProfiles, addProfile, removeProfile, updateProfile } from "../src/profileStore.js";
+import { createProfileStore } from "../src/profileStore.js";
 import { crescentMoonPng } from "../src/makeIcon.js";
 import { isElevatedWindows, relaunchElevatedWindows } from "../src/elevate.js";
 import { initLogger, log, getLogFile } from "../src/logger.js";
@@ -26,6 +26,18 @@ process.on("unhandledRejection", (err) => {
   log("UNHANDLED REJECTION:", err?.stack || String(err));
 });
 
+// Requested before the elevation dance below so a second launch, while an
+// instance (elevated or still-relaunching) already holds the lock, exits
+// immediately here — without ever prompting UAC again. The lock is tied to
+// the process; when the unelevated launcher below calls app.exit(0) it
+// releases the lock, and the elevated child it just spawned picks it back
+// up moments later once its own process starts.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  log("another instance already holds the lock, quitting");
+  app.exit(0);
+}
+
 const startedElevated = isElevatedWindows();
 
 if (!startedElevated) {
@@ -41,7 +53,8 @@ if (!startedElevated) {
   // seconds), Electron's own "ready" event has often already fired,
   // so whenReady().then() below would still run in this same,
   // about-to-die process and create a second, half-dead tray icon.
-  // app.exit() tears the process down immediately instead.
+  // app.exit() tears the process down immediately instead — which also
+  // releases the single-instance lock acquired above.
   app.exit(0);
 }
 
@@ -67,6 +80,28 @@ const APP_ICON = nativeImage.createFromBuffer(crescentMoonPng(256, [167, 139, 25
 
 function userDataDir() {
   return app.getPath("userData");
+}
+
+// Profiles embed a vless:// link, whose UUID is effectively a credential —
+// encrypt them at rest via the OS keychain (DPAPI on Windows) when available,
+// falling back to plaintext only on systems where safeStorage has nothing to
+// back it with (e.g. a headless Linux box with no keyring).
+const profileCodec = {
+  encode: (str) => (safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(str) : Buffer.from(str, "utf8")),
+  decode: (buf) => {
+    if (safeStorage.isEncryptionAvailable()) {
+      try {
+        return safeStorage.decryptString(buf);
+      } catch {
+        // Fall through: the file may predate encryption being available.
+      }
+    }
+    return buf.toString("utf8");
+  },
+};
+
+function profileStore() {
+  return createProfileStore(userDataDir(), profileCodec);
 }
 
 function resetTraffic() {
@@ -216,7 +251,7 @@ function notify(title, body) {
 
 function getState() {
   return {
-    profiles: loadProfiles(userDataDir()),
+    profiles: profileStore().load(),
     activeProfileId,
     connecting,
     connectedAt,
@@ -259,36 +294,36 @@ function openMainWindow() {
 ipcMain.handle("get-state", () => getState());
 
 ipcMain.handle("add-profile", (_evt, { name, link }) => {
-  addProfile(userDataDir(), { name: name || link, link });
+  profileStore().add({ name: name || link, link });
   broadcastState();
 });
 
 ipcMain.handle("remove-profile", (_evt, id) => {
   if (activeProfileId === id) disconnect();
-  removeProfile(userDataDir(), id);
+  profileStore().remove(id);
   broadcastState();
 });
 
 ipcMain.handle("edit-profile", (_evt, { id, name, link }) => {
-  updateProfile(userDataDir(), id, { name, link });
+  profileStore().update(id, { name, link });
   broadcastState();
 });
 
 ipcMain.handle("connect-profile", (_evt, id) => {
-  const profile = loadProfiles(userDataDir()).find((p) => p.id === id);
+  const profile = profileStore().load().find((p) => p.id === id);
   if (profile) connect(profile);
 });
 
 ipcMain.handle("disconnect", () => disconnect());
 
 ipcMain.handle("ping-profile", (_evt, id) => {
-  const profile = loadProfiles(userDataDir()).find((p) => p.id === id);
+  const profile = profileStore().load().find((p) => p.id === id);
   if (!profile) return { ok: false };
   return pingProfile(profile);
 });
 
 ipcMain.handle("copy-link", (_evt, id) => {
-  const profile = loadProfiles(userDataDir()).find((p) => p.id === id);
+  const profile = profileStore().load().find((p) => p.id === id);
   if (profile) clipboard.writeText(profile.link);
 });
 
@@ -299,7 +334,7 @@ ipcMain.handle("export-profiles", async () => {
     filters: [{ name: "JSON", extensions: ["json"] }],
   });
   if (canceled || !filePath) return { ok: false };
-  writeFileSync(filePath, JSON.stringify(loadProfiles(userDataDir()), null, 2));
+  writeFileSync(filePath, JSON.stringify(profileStore().load(), null, 2));
   return { ok: true, filePath };
 });
 
@@ -316,7 +351,7 @@ ipcMain.handle("import-profiles", async () => {
     let count = 0;
     for (const p of imported) {
       if (p && typeof p.link === "string" && p.link.startsWith("vless://")) {
-        addProfile(userDataDir(), { name: p.name || p.link, link: p.link });
+        profileStore().add({ name: p.name || p.link, link: p.link });
         count++;
       }
     }
@@ -347,7 +382,7 @@ ipcMain.handle("get-app-info", () => ({
 }));
 
 function buildTrayMenu() {
-  const profiles = loadProfiles(userDataDir());
+  const profiles = profileStore().load();
 
   const profileItems = profiles.map((p) => ({
     label: p.id === activeProfileId ? `● ${p.name}` : p.name,
@@ -408,3 +443,4 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", (e) => e.preventDefault());
 app.on("before-quit", () => disconnect());
+app.on("second-instance", () => openMainWindow());

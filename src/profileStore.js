@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 // Profiles carry a vless:// link — the embedded UUID is effectively a
@@ -58,7 +59,7 @@ export function createProfileStore(userDataDir, codec = plaintextCodec) {
     save,
     add({ name, link }) {
       const profiles = load();
-      const id = Date.now().toString(36);
+      const id = randomUUID();
       profiles.push({ id, name, link });
       save(profiles);
       return id;

@@ -1,37 +1,77 @@
 # Nyx
 
-Minimal cross-platform VPN client for VLESS+WS+TLS configs (the kind 3x-ui
-generates). It does not reimplement the protocol — it generates a
-[sing-box](https://sing-box.sagernet.org/) config and runs `sing-box` as a
-subprocess with a TUN inbound, so all system traffic gets routed through the
-proxy.
+Минималистичный кроссплатформенный VPN-клиент для конфигураций
+VLESS+WS+TLS (в том числе тех, что генерирует 3x-ui). Nyx не реализует
+протокол самостоятельно — он генерирует конфиг для
+[sing-box](https://sing-box.sagernet.org/) и запускает `sing-box` как
+подпроцесс с TUN-интерфейсом, так что весь системный трафик идёт через
+прокси.
 
-## Prerequisites
+Есть два способа использования: настольное приложение с иконкой в трее
+(Windows) и CLI-утилита `vlessvpn` / `nyx` для Node.js.
+
+## Скачать
+
+Готовый установщик для Windows — на странице
+[Releases](https://github.com/bikovnb-bot/nyx/releases). Скачайте
+`Nyx Setup x.x.x.exe`, запустите и следуйте шагам мастера установки.
+
+## Возможности приложения
+
+- Профили серверов с добавлением по `vless://`-ссылке, редактированием,
+  копированием ссылки и импортом/экспортом в JSON
+- Проверка доступности сервера (TCP-пинг) прямо из списка профилей
+- График скорости передачи данных (↓/↑) и общий объём трафика за сессию
+- Автозапуск при старте Windows
+- Иконка и меню в системном трее, уведомления о состоянии подключения
+- Вкладка «О программе» с версией приложения, версией sing-box и автором
+
+## Требования (для запуска из исходников)
 
 1. Node.js 18+
-2. `sing-box` binary on PATH, or set `SINGBOX_PATH` to its full path.
-   Download: https://github.com/SagerNet/sing-box/releases
-3. Administrator/root privileges (required to create a TUN interface).
+2. Бинарник `sing-box` в `PATH`, либо переменная окружения `SINGBOX_PATH`
+   с полным путём к нему.
+   Скачать: https://github.com/SagerNet/sing-box/releases
+3. Права администратора/root (нужны для создания TUN-интерфейса).
 
-## Install
+## Установка из исходников
 
 ```bash
 npm install
-npm link   # exposes the `vlessvpn` (and `nyx`) command globally
+npm link   # делает доступными команды `vlessvpn` и `nyx` глобально
 ```
 
-## Usage
+## Запуск GUI-приложения (Electron)
 
 ```bash
-# Windows (as Administrator) / Linux & macOS (as root)
+npm run gui
+```
+
+## Использование CLI
+
+```bash
+# Windows (от имени администратора) / Linux и macOS (через sudo)
 vlessvpn connect "vless://<uuid>@5.145.176.51:443?type=ws&security=tls&path=%2F&encryption=none&fp=chrome#Test"
 ```
 
-Ctrl+C disconnects and tears down the TUN interface.
+Ctrl+C отключает VPN и снимает TUN-интерфейс.
 
-## Notes
+## Сборка установщика
 
-- Only `vless://` links with `type=ws` and `security=tls|none` are parsed
-  today. `reality` and `grpc` transports are not implemented yet.
-- DNS is resolved through the proxy by default (`remote-dns` in the
-  generated config) to avoid leaks.
+```bash
+npm run icons       # перегенерировать иконки (build/icon.ico, build/icon.png)
+npm run dist         # собрать NSIS-инсталлятор для Windows (release/)
+npm run dist:portable  # собрать portable-версию (без самоповышения прав — см. примечание ниже)
+```
+
+## Примечания
+
+- Поддерживаются ссылки `vless://` с транспортами `tcp`, `ws` и `grpc`,
+  а также с `security=none|tls|reality`.
+- DNS по умолчанию резолвится через прокси (`remote-dns` в
+  сгенерированном конфиге), чтобы избежать утечек.
+- Portable-сборка Windows несовместима с самоповышением прав: обёртка
+  electron-builder использует Job Object, который убивает уже
+  запущенный элевированный процесс через несколько секунд после того,
+  как исходный (неэлевированный) процесс завершается. Используйте
+  обычный установщик (`npm run dist`) — это сборка по умолчанию.

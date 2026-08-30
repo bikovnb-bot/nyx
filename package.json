@@ -14,12 +14,14 @@
     "gui": "electron .",
     "test": "node --test \"src/**/*.test.js\"",
     "icons": "node scripts/generate-icons.js",
-    "dist": "electron-builder --win nsis",
-    "dist:portable": "electron-builder --win portable",
-    "dist:dir": "electron-builder --win dir"
+    "dist": "electron-builder --win nsis --publish never",
+    "dist:portable": "electron-builder --win portable --publish never",
+    "dist:dir": "electron-builder --win dir",
+    "release": "electron-builder --win nsis --publish always"
   },
   "dependencies": {
-    "commander": "^12.1.0"
+    "commander": "^12.1.0",
+    "electron-updater": "^6.8.9"
   },
   "engines": {
     "node": ">=18"
@@ -58,6 +60,11 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "bikovnb-bot",
+      "repo": "nyx"
     }
   }
 }

@@ -443,6 +443,29 @@
   .about-row span:first-child { color: var(--muted); }
   .about-row span:last-child { font-weight: 600; }
 
+  .update-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .update-row #updateActionBtn {
+    display: none;
+    font-size: 11.5px;
+    padding: 6px 10px;
+    border-radius: 7px;
+    flex-shrink: 0;
+  }
+  .update-row #updateActionBtn.visible { display: inline-block; }
+  .update-row #updateActionBtn.primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    border-color: transparent;
+    color: white;
+  }
+
   /* Toasts */
   #toasts {
     position: fixed;
@@ -565,6 +588,10 @@
       <h2>Nyx</h2>
       <div class="about-version" id="aboutVersion">версия —</div>
       <div class="about-rows" id="aboutRows"></div>
+      <div class="update-row" id="updateRow">
+        <span id="updateStatusText">Проверка обновлений...</span>
+        <button id="updateActionBtn"></button>
+      </div>
       <div class="actions">
         <button class="primary full" id="aboutCloseBtn">Закрыть</button>
       </div>
@@ -861,6 +888,55 @@
     });
 
     const aboutOverlay = document.getElementById("aboutOverlay");
+    const updateStatusText = document.getElementById("updateStatusText");
+    const updateActionBtn = document.getElementById("updateActionBtn");
+
+    function renderUpdateStatus(status) {
+      updateActionBtn.className = "";
+      switch (status.status) {
+        case "checking":
+          updateStatusText.textContent = "Проверка обновлений...";
+          break;
+        case "available":
+          updateStatusText.textContent = `Загружается обновление ${status.version}...`;
+          break;
+        case "downloading":
+          updateStatusText.textContent = `Загрузка обновления: ${status.percent ?? 0}%`;
+          break;
+        case "downloaded":
+          updateStatusText.textContent = `Обновление ${status.version} готово`;
+          updateActionBtn.textContent = "Перезапустить и установить";
+          updateActionBtn.className = "primary visible";
+          break;
+        case "not-available":
+          updateStatusText.textContent = "У вас последняя версия";
+          updateActionBtn.textContent = "Проверить";
+          updateActionBtn.className = "visible";
+          break;
+        case "error":
+          updateStatusText.textContent = "Не удалось проверить обновления";
+          updateActionBtn.textContent = "Повторить";
+          updateActionBtn.className = "visible";
+          break;
+        default:
+          updateStatusText.textContent = "Проверка обновлений...";
+      }
+    }
+
+    updateActionBtn.addEventListener("click", () => {
+      if (updateState.status === "downloaded") {
+        window.vlessvpn.installUpdate();
+      } else {
+        window.vlessvpn.checkForUpdates();
+      }
+    });
+
+    let updateState = { status: "idle" };
+    window.vlessvpn.onUpdateStatus((status) => {
+      updateState = status;
+      renderUpdateStatus(status);
+    });
+
     document.getElementById("aboutBtn").addEventListener("click", async () => {
       const info = await window.vlessvpn.getAppInfo();
       document.getElementById("aboutVersion").textContent = `версия ${info.version}`;
@@ -873,6 +949,8 @@
       ].map(([label, value]) => `
         <div class="about-row"><span>${escapeHtml(label)}</span><span>${escapeHtml(String(value))}</span></div>
       `).join("");
+      updateState = await window.vlessvpn.getUpdateStatus();
+      renderUpdateStatus(updateState);
       aboutOverlay.classList.add("open");
     });
     document.getElementById("aboutCloseBtn").addEventListener("click", () => aboutOverlay.classList.remove("open"));

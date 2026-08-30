@@ -1,4 +1,9 @@
 import { app, Tray, Menu, nativeImage, BrowserWindow, ipcMain, Notification, shell, dialog, clipboard, safeStorage } from "electron";
+// electron-updater is CJS and only exposes autoUpdater via a lazy getter on
+// its default export — `import { autoUpdater }` fails to resolve under
+// Node's ESM/CJS interop and crashes the whole process before any code runs.
+import electronUpdaterPkg from "electron-updater";
+const { autoUpdater } = electronUpdaterPkg;
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { writeFileSync, mkdtempSync, readFileSync } from "node:fs";
@@ -249,6 +254,49 @@ function notify(title, body) {
   new Notification({ title, body }).show();
 }
 
+let updateState = { status: "idle" };
+
+function setUpdateState(next) {
+  updateState = next;
+  mainWindow?.webContents.send("update-status", updateState);
+}
+
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = false;
+autoUpdater.logger = {
+  info: (...args) => log("[updater]", ...args),
+  warn: (...args) => log("[updater] WARN:", ...args),
+  error: (...args) => log("[updater] ERROR:", ...args),
+};
+
+autoUpdater.on("checking-for-update", () => setUpdateState({ status: "checking" }));
+autoUpdater.on("update-available", (info) => {
+  setUpdateState({ status: "available", version: info.version });
+  notify("Доступно обновление", `Nyx ${info.version} загружается в фоне`);
+});
+autoUpdater.on("update-not-available", () => setUpdateState({ status: "not-available" }));
+autoUpdater.on("download-progress", (progress) => {
+  setUpdateState({ status: "downloading", percent: Math.round(progress.percent) });
+});
+autoUpdater.on("update-downloaded", (info) => {
+  setUpdateState({ status: "downloaded", version: info.version });
+  notify("Обновление готово", `Nyx ${info.version} установится при перезапуске`);
+});
+autoUpdater.on("error", (err) => {
+  setUpdateState({ status: "error", message: err.message });
+  log("[updater] error:", err.stack || err.message);
+});
+
+function checkForUpdates() {
+  if (!app.isPackaged) {
+    setUpdateState({ status: "not-available" });
+    return;
+  }
+  autoUpdater.checkForUpdates().catch((err) => {
+    setUpdateState({ status: "error", message: err.message });
+  });
+}
+
 function getState() {
   return {
     profiles: profileStore().load(),
@@ -381,6 +429,16 @@ ipcMain.handle("get-app-info", () => ({
   singboxVersion: getSingBoxVersion(),
 }));
 
+ipcMain.handle("get-update-status", () => updateState);
+
+ipcMain.handle("check-for-updates", () => {
+  checkForUpdates();
+});
+
+ipcMain.handle("install-update", () => {
+  autoUpdater.quitAndInstall();
+});
+
 function buildTrayMenu() {
   const profiles = profileStore().load();
 
@@ -436,6 +494,7 @@ app.whenReady().then(() => {
     tray.on("click", openMainWindow);
     updateTrayIcon();
     log("tray created ok");
+    setTimeout(checkForUpdates, 5000);
   } catch (err) {
     log("TRAY CREATE FAILED:", err.stack || err.message);
   }

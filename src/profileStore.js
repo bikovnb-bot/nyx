@@ -2,19 +2,21 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from "
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 
-// Profiles carry a vless:// link — the embedded UUID is effectively a
-// credential, so at rest it's encrypted (see codec below) rather than
-// stored as plain JSON.
 export function profileStorePath(userDataDir) {
-  return path.join(userDataDir, "profiles.dat");
-}
-
-function legacyProfileStorePath(userDataDir) {
   return path.join(userDataDir, "profiles.json");
 }
 
-// Identity codec: used by default (and by tests) when no encryption is
-// wired in. The Electron app passes a safeStorage-backed codec instead.
+// A short-lived experiment stored profiles encrypted via Electron's
+// safeStorage. That turned out to tie the encryption key to the specific
+// build's signing identity — every auto-update (a new, differently-signed
+// binary) made previously saved profiles undecryptable, i.e. it silently
+// discarded the user's servers on every single update. Back to plain JSON;
+// this path is only consulted once, best-effort, to migrate whatever an
+// already-decryptable leftover file might still hold.
+function legacyEncryptedStorePath(userDataDir) {
+  return path.join(userDataDir, "profiles.dat");
+}
+
 const plaintextCodec = {
   encode: (str) => Buffer.from(str, "utf8"),
   decode: (buf) => buf.toString("utf8"),
@@ -25,29 +27,29 @@ export function createProfileStore(userDataDir, codec = plaintextCodec) {
 
   function save(profiles) {
     mkdirSync(userDataDir, { recursive: true });
-    writeFileSync(file, codec.encode(JSON.stringify(profiles, null, 2)));
+    writeFileSync(file, JSON.stringify(profiles, null, 2));
   }
 
   function load() {
     if (existsSync(file)) {
       try {
-        return JSON.parse(codec.decode(readFileSync(file)));
+        return JSON.parse(readFileSync(file, "utf8"));
       } catch (err) {
         console.error(`Failed to read profiles from ${file}: ${err.message}`);
         return [];
       }
     }
 
-    // One-time migration from the old unencrypted profiles.json.
-    const legacy = legacyProfileStorePath(userDataDir);
+    // One-time best-effort migration from the old encrypted profiles.dat.
+    const legacy = legacyEncryptedStorePath(userDataDir);
     if (existsSync(legacy)) {
       try {
-        const profiles = JSON.parse(readFileSync(legacy, "utf8"));
+        const profiles = JSON.parse(codec.decode(readFileSync(legacy)));
         save(profiles);
         unlinkSync(legacy);
         return profiles;
       } catch (err) {
-        console.error(`Failed to migrate legacy profiles from ${legacy}: ${err.message}`);
+        console.error(`Could not migrate legacy encrypted profiles from ${legacy}: ${err.message}`);
       }
     }
 

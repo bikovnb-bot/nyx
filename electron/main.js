@@ -1,4 +1,4 @@
-import { app, Tray, Menu, nativeImage, BrowserWindow, ipcMain, Notification, shell, dialog, clipboard, safeStorage } from "electron";
+import { app, Tray, Menu, nativeImage, BrowserWindow, ipcMain, Notification, shell, dialog, clipboard } from "electron";
 // electron-updater is CJS and only exposes autoUpdater via a lazy getter on
 // its default export — `import { autoUpdater }` fails to resolve under
 // Node's ESM/CJS interop and crashes the whole process before any code runs.
@@ -87,26 +87,8 @@ function userDataDir() {
   return app.getPath("userData");
 }
 
-// Profiles embed a vless:// link, whose UUID is effectively a credential —
-// encrypt them at rest via the OS keychain (DPAPI on Windows) when available,
-// falling back to plaintext only on systems where safeStorage has nothing to
-// back it with (e.g. a headless Linux box with no keyring).
-const profileCodec = {
-  encode: (str) => (safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(str) : Buffer.from(str, "utf8")),
-  decode: (buf) => {
-    if (safeStorage.isEncryptionAvailable()) {
-      try {
-        return safeStorage.decryptString(buf);
-      } catch {
-        // Fall through: the file may predate encryption being available.
-      }
-    }
-    return buf.toString("utf8");
-  },
-};
-
 function profileStore() {
-  return createProfileStore(userDataDir(), profileCodec);
+  return createProfileStore(userDataDir());
 }
 
 function resetTraffic() {

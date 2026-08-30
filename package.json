@@ -1,0 +1,63 @@
+{
+  "name": "nyx-vpn-client",
+  "version": "0.1.0",
+  "description": "Nyx — cross-platform VLESS+WS+TLS VPN client (TUN mode) built on top of sing-box",
+  "author": "Balamut",
+  "type": "module",
+  "bin": {
+    "vlessvpn": "./bin/vlessvpn.js",
+    "nyx": "./bin/vlessvpn.js"
+  },
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "node bin/vlessvpn.js",
+    "gui": "electron .",
+    "test": "node --test \"src/**/*.test.js\"",
+    "icons": "node scripts/generate-icons.js",
+    "dist": "electron-builder --win nsis",
+    "dist:portable": "electron-builder --win portable",
+    "dist:dir": "electron-builder --win dir"
+  },
+  "dependencies": {
+    "commander": "^12.1.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.nyx.vpnclient",
+    "productName": "Nyx",
+    "icon": "build/icon.ico",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "bin/**/*",
+      "electron/**/*",
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor/sing-box.exe",
+        "to": "vendor/sing-box.exe"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "requestedExecutionLevel": "asInvoker",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

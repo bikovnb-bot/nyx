@@ -1,0 +1,895 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<title>Nyx</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #14151b;
+    --panel: #1c1e26;
+    --panel-2: #262835;
+    --panel-hover: #2c2f3d;
+    --border: #33364a;
+    --text: #eef0f7;
+    --muted: #8b8da3;
+    --accent: #5b7cfa;
+    --accent-2: #8b5cf6;
+    --ok: #2ecc71;
+    --warn: #f5a623;
+    --danger: #ff5566;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    position: relative;
+    padding: 20px 20px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    -webkit-app-region: drag;
+    background: linear-gradient(135deg, rgba(91,124,250,.18), rgba(139,92,246,.10) 60%, transparent);
+    border-bottom: 1px solid var(--border);
+    overflow: hidden;
+  }
+  header::before {
+    content: "";
+    position: absolute;
+    top: -60px; right: -60px;
+    width: 160px; height: 160px;
+    background: radial-gradient(circle, rgba(91,124,250,.35), transparent 70%);
+    pointer-events: none;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 1;
+  }
+  .logo {
+    width: 30px; height: 30px;
+    border-radius: 9px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 4px 14px rgba(91,124,250,.35);
+  }
+  .logo svg { width: 16px; height: 16px; }
+  .dot-wrap { position: relative; width: 12px; height: 12px; flex-shrink: 0; }
+  .dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--muted);
+    position: relative;
+    z-index: 1;
+    transition: background .2s;
+  }
+  .dot.connected { background: var(--ok); }
+  .dot.connecting { background: var(--warn); }
+  .dot-ping {
+    position: absolute; inset: 0;
+    border-radius: 50%;
+    background: var(--ok);
+    opacity: 0;
+  }
+  .dot.connected ~ .dot-ping,
+  .dot-wrap.connected .dot-ping { animation: ping 1.6s cubic-bezier(0,0,.2,1) infinite; }
+  @keyframes ping {
+    0% { transform: scale(1); opacity: .6; }
+    75%, 100% { transform: scale(2.4); opacity: 0; }
+  }
+  header h1 {
+    font-size: 15px;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: .2px;
+  }
+  header .status-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
+    z-index: 1;
+  }
+  header .status-text {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  header .status-timer {
+    font-size: 11px;
+    color: var(--ok);
+    font-variant-numeric: tabular-nums;
+  }
+  .header-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+    z-index: 1;
+    -webkit-app-region: no-drag;
+  }
+  .icon-btn {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,.03);
+    color: var(--muted);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background .15s, color .15s, border-color .15s;
+  }
+  .icon-btn:hover { background: var(--panel-2); color: var(--text); border-color: var(--accent); }
+  .icon-btn svg { width: 26px; height: 26px; }
+
+  .traffic-panel {
+    display: none;
+    padding: 12px 16px 4px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(91,124,250,.06), transparent);
+  }
+  .traffic-panel.visible { display: block; }
+  .traffic-panel svg#trafficChart {
+    width: 100%;
+    height: 48px;
+    display: block;
+    overflow: visible;
+  }
+  #trafficDownLine { stroke: #6ee7ff; stroke-width: 1.6; }
+  #trafficUpLine { stroke: #c4b5fd; stroke-width: 1.6; }
+  .traffic-stats {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 6px 2px 8px;
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .traffic-stat { display: flex; align-items: center; gap: 4px; }
+  .traffic-stat svg { width: 12px; height: 12px; }
+  .traffic-stat.down { color: #6ee7ff; }
+  .traffic-stat.up { color: #c4b5fd; }
+  .traffic-stat.total { margin-left: auto; color: var(--muted); }
+
+  .search-bar {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .search-bar input {
+    width: 100%;
+    font-family: inherit;
+    font-size: 12.5px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 8px 10px 8px 30px;
+    outline: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238b8da3' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: 10px center;
+    transition: border-color .15s;
+  }
+  .search-bar input:focus { border-color: var(--accent); }
+
+  main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+  }
+  main::-webkit-scrollbar { width: 8px; }
+  main::-webkit-scrollbar-thumb { background: var(--panel-2); border-radius: 8px; }
+
+  .profile {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 12px;
+    border-radius: 12px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s, transform .1s;
+    animation: fadeIn .18s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+  .profile:hover { border-color: var(--accent); background: var(--panel-hover); }
+  .profile:active { transform: scale(.99); }
+  .profile.active {
+    border-color: var(--ok);
+    background: linear-gradient(135deg, rgba(46,204,113,.08), var(--panel-2));
+  }
+  .profile .radio {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid var(--muted);
+    flex-shrink: 0;
+    position: relative;
+  }
+  .profile.active .radio { border-color: var(--ok); }
+  .profile.active .radio::after {
+    content: "";
+    position: absolute;
+    inset: 2px;
+    border-radius: 50%;
+    background: var(--ok);
+  }
+  .profile-info { flex: 1; min-width: 0; }
+  .profile-name {
+    font-size: 13.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .profile-meta {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .badge {
+    font-size: 9.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .3px;
+    padding: 1px 6px;
+    border-radius: 5px;
+    background: var(--panel-2);
+    color: var(--muted);
+  }
+  .badge.tls { color: #6ee7ff; background: rgba(110,231,255,.12); }
+  .badge.reality { color: #c4b5fd; background: rgba(196,181,253,.12); }
+  .badge.insecure { color: var(--danger); background: rgba(255,85,102,.12); }
+  .ping-result { font-size: 10.5px; color: var(--muted); }
+  .ping-result.good { color: var(--ok); }
+  .ping-result.bad { color: var(--danger); }
+
+  .profile-actions { display: flex; gap: 2px; flex-shrink: 0; }
+  .profile-actions button {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 13px;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    display: flex;
+  }
+  .profile-actions button svg { width: 14px; height: 14px; }
+  .profile-actions .act-ping:hover { background: rgba(91,124,250,.15); color: var(--accent); }
+  .profile-actions .act-copy:hover { background: rgba(91,124,250,.15); color: var(--accent); }
+  .profile-actions .act-edit:hover { background: rgba(245,166,35,.15); color: var(--warn); }
+  .profile-actions .act-remove:hover { background: rgba(255,85,102,.15); color: var(--danger); }
+
+  .confirm-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: var(--panel);
+    border: 1px solid var(--danger);
+    margin-bottom: 8px;
+    font-size: 12px;
+  }
+  .confirm-row span { flex: 1; color: var(--text); }
+  .confirm-row button {
+    font-size: 11.5px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    color: var(--text);
+    cursor: pointer;
+  }
+  .confirm-row button.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+
+  .empty {
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+    padding: 50px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  .empty svg { width: 40px; height: 40px; opacity: .35; }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--panel);
+  }
+  .row { display: flex; gap: 8px; }
+  button {
+    font-family: inherit;
+    font-size: 13px;
+    border-radius: 9px;
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    color: var(--text);
+    padding: 9px 12px;
+    cursor: pointer;
+    transition: background .15s, border-color .15s, transform .08s;
+  }
+  button:hover { border-color: var(--accent); }
+  button:active { transform: scale(.98); }
+  button:disabled { opacity: .5; cursor: default; }
+  button:disabled:hover { border-color: var(--border); }
+  button.primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    border-color: transparent;
+    color: white;
+    flex: 1;
+    font-weight: 600;
+  }
+  button.primary:hover { filter: brightness(1.08); }
+  button.ghost { flex: 1; background: transparent; }
+  button.danger-outline:hover { border-color: var(--danger); color: var(--danger); }
+  .full { width: 100%; }
+  .checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    color: var(--muted);
+    padding: 4px 2px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .checkbox-row input { accent-color: var(--accent); width: 14px; height: 14px; }
+  .links {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11.5px;
+  }
+  .links a {
+    color: var(--muted);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .links a:hover { color: var(--accent); }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.6);
+    backdrop-filter: blur(2px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+    width: 320px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.5);
+    animation: pop .15s ease;
+  }
+  @keyframes pop { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
+  .modal h2 { font-size: 14px; margin: 0 0 14px; }
+  .modal label {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 5px;
+    margin-top: 12px;
+  }
+  .modal input {
+    width: 100%;
+    font-family: inherit;
+    font-size: 13px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--text);
+    padding: 8px 10px;
+  }
+  .modal input:focus { outline: none; border-color: var(--accent); }
+  .modal .actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 18px;
+  }
+
+  .about-modal { text-align: center; }
+  .about-logo {
+    width: 52px; height: 52px;
+    margin: 0 auto 12px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 6px 20px rgba(91,124,250,.35);
+  }
+  .about-logo svg { width: 28px; height: 28px; }
+  .about-modal h2 { text-align: center; font-size: 18px; margin: 0; }
+  .about-version { font-size: 12px; color: var(--muted); margin-top: 2px; margin-bottom: 16px; }
+  .about-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: left;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .about-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+  }
+  .about-row span:first-child { color: var(--muted); }
+  .about-row span:last-child { font-weight: 600; }
+
+  /* Toasts */
+  #toasts {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    z-index: 50;
+    pointer-events: none;
+    width: calc(100% - 32px);
+    align-items: center;
+  }
+  .toast {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 12px;
+    padding: 9px 14px;
+    border-radius: 9px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.4);
+    animation: toastIn .18s ease;
+    max-width: 100%;
+  }
+  .toast.error { border-color: var(--danger); color: #ffd7db; }
+  .toast.success { border-color: var(--ok); }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+</style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="white"><path d="M20 12.7A8.5 8.5 0 1 1 11.3 4a7 7 0 0 0 8.7 8.7Z"/><circle cx="9" cy="7" r="0.8"/><circle cx="7" cy="10.2" r="0.5"/></svg>
+      </div>
+      <div>
+        <h1>Nyx</h1>
+        <div class="status-line">
+          <div class="dot-wrap" id="dotWrap">
+            <div id="dot" class="dot"></div>
+            <div class="dot-ping"></div>
+          </div>
+          <span id="statusText" class="status-text">Отключено</span>
+          <span id="statusTimer" class="status-timer"></span>
+        </div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="icon-btn" id="importBtn" title="Импорт профилей">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      </button>
+      <button class="icon-btn" id="exportBtn" title="Экспорт профилей">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      </button>
+      <button class="icon-btn" id="aboutBtn" title="О программе">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="11"/><circle cx="12" cy="7.5" r="0.9" fill="currentColor" stroke="none"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="traffic-panel" id="trafficPanel">
+    <svg id="trafficChart" viewBox="0 0 300 56" preserveAspectRatio="none">
+      <polyline id="trafficDownLine" points="" fill="none" />
+      <polyline id="trafficUpLine" points="" fill="none" />
+    </svg>
+    <div class="traffic-stats">
+      <div class="traffic-stat down">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+        <span id="trafficDownSpeed">0 Б/с</span>
+      </div>
+      <div class="traffic-stat up">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+        <span id="trafficUpSpeed">0 Б/с</span>
+      </div>
+      <div class="traffic-stat total" id="trafficTotal">Σ 0 Б</div>
+    </div>
+  </div>
+
+  <div class="search-bar">
+    <input id="searchInput" placeholder="Поиск профилей..." />
+  </div>
+
+  <main id="list"></main>
+
+  <footer>
+    <div class="row">
+      <button class="primary" id="disconnectBtn">Отключить</button>
+    </div>
+    <button class="full" id="addBtn">+ Добавить профиль</button>
+    <label class="checkbox-row">
+      <input type="checkbox" id="autostart" />
+      Запускать при старте Windows
+    </label>
+    <div class="links">
+      <a id="openLog">Открыть журнал</a>
+      <a id="quit">Выход</a>
+    </div>
+  </footer>
+
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <h2 id="modalTitle">Новый профиль</h2>
+      <label>Название</label>
+      <input id="nameInput" placeholder="Мой сервер" />
+      <label>Ссылка vless://</label>
+      <input id="linkInput" placeholder="vless://uuid@host:port?..." />
+      <div class="actions">
+        <button id="cancelBtn">Отмена</button>
+        <button class="primary" id="saveBtn">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="aboutOverlay">
+    <div class="modal about-modal">
+      <div class="about-logo">
+        <svg viewBox="0 0 24 24" fill="white"><path d="M20 12.7A8.5 8.5 0 1 1 11.3 4a7 7 0 0 0 8.7 8.7Z"/><circle cx="9" cy="7" r="0.8"/><circle cx="7" cy="10.2" r="0.5"/></svg>
+      </div>
+      <h2>Nyx</h2>
+      <div class="about-version" id="aboutVersion">версия —</div>
+      <div class="about-rows" id="aboutRows"></div>
+      <div class="actions">
+        <button class="primary full" id="aboutCloseBtn">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toasts"></div>
+
+  <script>
+    const dot = document.getElementById("dot");
+    const dotWrap = document.getElementById("dotWrap");
+    const statusText = document.getElementById("statusText");
+    const statusTimer = document.getElementById("statusTimer");
+    const list = document.getElementById("list");
+    const disconnectBtn = document.getElementById("disconnectBtn");
+    const autostart = document.getElementById("autostart");
+    const modalOverlay = document.getElementById("modalOverlay");
+    const modalTitle = document.getElementById("modalTitle");
+    const nameInput = document.getElementById("nameInput");
+    const linkInput = document.getElementById("linkInput");
+    const searchInput = document.getElementById("searchInput");
+    const trafficPanel = document.getElementById("trafficPanel");
+    const trafficDownLine = document.getElementById("trafficDownLine");
+    const trafficUpLine = document.getElementById("trafficUpLine");
+    const trafficDownSpeed = document.getElementById("trafficDownSpeed");
+    const trafficUpSpeed = document.getElementById("trafficUpSpeed");
+    const trafficTotal = document.getElementById("trafficTotal");
+
+    let currentState = { profiles: [], activeProfileId: null, connecting: false, connectedAt: null, autoStart: false };
+    let editingId = null;
+    let confirmRemoveId = null;
+    let searchQuery = "";
+    let timerInterval = null;
+    const pingResults = {};
+    const trafficPoints = [];
+    const TRAFFIC_MAX_POINTS = 60;
+
+    function formatSpeed(bytesPerSec) {
+      if (bytesPerSec < 1024) return `${Math.round(bytesPerSec)} Б/с`;
+      if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(1)} КБ/с`;
+      return `${(bytesPerSec / 1024 / 1024).toFixed(1)} МБ/с`;
+    }
+
+    function formatBytes(bytes) {
+      if (bytes < 1024) return `${Math.round(bytes)} Б`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
+      if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
+      return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} ГБ`;
+    }
+
+    function resetTrafficChart() {
+      trafficPoints.length = 0;
+      trafficDownLine.setAttribute("points", "");
+      trafficUpLine.setAttribute("points", "");
+      trafficDownSpeed.textContent = "0 Б/с";
+      trafficUpSpeed.textContent = "0 Б/с";
+      trafficTotal.textContent = "Σ 0 Б";
+    }
+
+    function renderTrafficChart() {
+      const w = 300;
+      const h = 56;
+      const maxVal = Math.max(1, ...trafficPoints.map((p) => Math.max(p.up, p.down)));
+      const step = trafficPoints.length > 1 ? w / (TRAFFIC_MAX_POINTS - 1) : 0;
+      const startIdx = TRAFFIC_MAX_POINTS - trafficPoints.length;
+      const toPoints = (key) =>
+        trafficPoints
+          .map((p, i) => `${(startIdx + i) * step},${h - (p[key] / maxVal) * (h - 4) - 2}`)
+          .join(" ");
+      trafficDownLine.setAttribute("points", toPoints("down"));
+      trafficUpLine.setAttribute("points", toPoints("up"));
+    }
+
+    function handleTraffic({ up, down, totals }) {
+      trafficPoints.push({ up, down });
+      if (trafficPoints.length > TRAFFIC_MAX_POINTS) trafficPoints.shift();
+      renderTrafficChart();
+      trafficDownSpeed.textContent = formatSpeed(down);
+      trafficUpSpeed.textContent = formatSpeed(up);
+      trafficTotal.textContent = `Σ ${formatBytes(totals.down + totals.up)}`;
+    }
+
+    function toast(message, kind = "") {
+      const el = document.createElement("div");
+      el.className = "toast" + (kind ? ` ${kind}` : "");
+      el.textContent = message;
+      document.getElementById("toasts").appendChild(el);
+      setTimeout(() => {
+        el.style.transition = "opacity .2s";
+        el.style.opacity = "0";
+        setTimeout(() => el.remove(), 200);
+      }, 2800);
+    }
+
+    function formatDuration(ms) {
+      const s = Math.floor(ms / 1000);
+      const hh = String(Math.floor(s / 3600)).padStart(2, "0");
+      const mm = String(Math.floor((s % 3600) / 60)).padStart(2, "0");
+      const ss = String(s % 60).padStart(2, "0");
+      return `${hh}:${mm}:${ss}`;
+    }
+
+    function tickTimer() {
+      if (currentState.activeProfileId && currentState.connectedAt) {
+        statusTimer.textContent = formatDuration(Date.now() - currentState.connectedAt);
+      } else {
+        statusTimer.textContent = "";
+      }
+    }
+
+    function render(state) {
+      currentState = state;
+      const { profiles, activeProfileId, connecting, autoStart } = state;
+      autostart.checked = autoStart;
+
+      dotWrap.classList.toggle("connected", !!activeProfileId);
+      if (activeProfileId) {
+        dot.className = "dot connected";
+        statusText.textContent = "Подключено";
+      } else if (connecting) {
+        dot.className = "dot connecting";
+        statusText.textContent = "Подключение...";
+      } else {
+        dot.className = "dot";
+        statusText.textContent = "Отключено";
+      }
+      tickTimer();
+      disconnectBtn.disabled = !activeProfileId;
+
+      trafficPanel.classList.toggle("visible", !!activeProfileId);
+      if (!activeProfileId) resetTrafficChart();
+
+      list.innerHTML = "";
+      const filtered = searchQuery
+        ? profiles.filter((p) => (p.name + " " + p.link).toLowerCase().includes(searchQuery))
+        : profiles;
+
+      if (!profiles.length) {
+        list.innerHTML = `<div class="empty">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 12.7A8.5 8.5 0 1 1 11.3 4a7 7 0 0 0 8.7 8.7Z"/></svg>
+          <div>Пока нет ни одного профиля.<br>Добавьте ссылку vless:// снизу.</div>
+        </div>`;
+        return;
+      }
+      if (!filtered.length) {
+        list.innerHTML = `<div class="empty">Ничего не найдено по запросу "${escapeHtml(searchQuery)}"</div>`;
+        return;
+      }
+
+      for (const p of filtered) {
+        if (confirmRemoveId === p.id) {
+          const row = document.createElement("div");
+          row.className = "confirm-row";
+          row.innerHTML = `<span>Удалить «${escapeHtml(p.name)}»?</span>
+            <button data-act="cancel">Отмена</button>
+            <button class="danger" data-act="confirm">Удалить</button>`;
+          row.querySelector('[data-act="cancel"]').addEventListener("click", () => {
+            confirmRemoveId = null;
+            render(currentState);
+          });
+          row.querySelector('[data-act="confirm"]').addEventListener("click", () => {
+            confirmRemoveId = null;
+            window.vlessvpn.removeProfile(p.id);
+          });
+          list.appendChild(row);
+          continue;
+        }
+
+        const meta = summarizeLink(p.link);
+        const ping = pingResults[p.id];
+        const el = document.createElement("div");
+        el.className = "profile" + (p.id === activeProfileId ? " active" : "");
+        el.innerHTML = `
+          <div class="radio"></div>
+          <div class="profile-info">
+            <div class="profile-name">${escapeHtml(p.name)}</div>
+            <div class="profile-meta">
+              <span>${escapeHtml(meta.hostPort)}</span>
+              <span class="badge ${meta.badgeClass}">${meta.security}</span>
+              ${meta.insecure ? '<span class="badge insecure">insecure</span>' : ""}
+              ${ping ? `<span class="ping-result ${ping.ok ? "good" : "bad"}">${ping.ok ? ping.ms + " мс" : "нет ответа"}</span>` : ""}
+            </div>
+          </div>
+          <div class="profile-actions">
+            <button class="act-ping" title="Проверить">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            </button>
+            <button class="act-copy" title="Копировать ссылку">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+            <button class="act-edit" title="Изменить">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+            </button>
+            <button class="act-remove" title="Удалить">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            </button>
+          </div>
+        `;
+        el.querySelector(".profile-info").addEventListener("click", () => window.vlessvpn.connect(p.id));
+        el.querySelector(".radio").addEventListener("click", () => window.vlessvpn.connect(p.id));
+        el.querySelector(".act-ping").addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const btn = e.currentTarget;
+          btn.style.opacity = ".4";
+          const result = await window.vlessvpn.pingProfile(p.id);
+          pingResults[p.id] = result;
+          render(currentState);
+        });
+        el.querySelector(".act-copy").addEventListener("click", (e) => {
+          e.stopPropagation();
+          window.vlessvpn.copyLink(p.id);
+          toast("Ссылка скопирована", "success");
+        });
+        el.querySelector(".act-edit").addEventListener("click", (e) => {
+          e.stopPropagation();
+          editingId = p.id;
+          modalTitle.textContent = "Изменить профиль";
+          nameInput.value = p.name;
+          linkInput.value = p.link;
+          modalOverlay.classList.add("open");
+          nameInput.focus();
+        });
+        el.querySelector(".act-remove").addEventListener("click", (e) => {
+          e.stopPropagation();
+          confirmRemoveId = p.id;
+          render(currentState);
+        });
+        list.appendChild(el);
+      }
+    }
+
+    function summarizeLink(link) {
+      try {
+        const afterAt = link.split("@")[1] || "";
+        const hostPort = afterAt.split("?")[0];
+        const security = /security=([a-z]+)/.exec(link)?.[1] || "none";
+        const insecure = /allowInsecure=1/.test(link);
+        const badgeClass = security === "reality" ? "reality" : security === "tls" ? "tls" : "";
+        return { hostPort, security, insecure, badgeClass };
+      } catch {
+        return { hostPort: link, security: "none", insecure: false, badgeClass: "" };
+      }
+    }
+
+    function escapeHtml(s) {
+      const d = document.createElement("div");
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    searchInput.addEventListener("input", () => {
+      searchQuery = searchInput.value.trim().toLowerCase();
+      render(currentState);
+    });
+
+    document.getElementById("addBtn").addEventListener("click", () => {
+      editingId = null;
+      modalTitle.textContent = "Новый профиль";
+      nameInput.value = "";
+      linkInput.value = "";
+      modalOverlay.classList.add("open");
+      nameInput.focus();
+    });
+    document.getElementById("cancelBtn").addEventListener("click", () => modalOverlay.classList.remove("open"));
+    modalOverlay.addEventListener("click", (e) => {
+      if (e.target === modalOverlay) modalOverlay.classList.remove("open");
+    });
+    document.getElementById("saveBtn").addEventListener("click", async () => {
+      const link = linkInput.value.trim();
+      if (!link.startsWith("vless://")) {
+        linkInput.style.borderColor = "var(--danger)";
+        return;
+      }
+      linkInput.style.borderColor = "";
+      if (editingId) {
+        await window.vlessvpn.editProfile(editingId, nameInput.value.trim() || link, link);
+        toast("Профиль обновлён", "success");
+      } else {
+        await window.vlessvpn.addProfile(nameInput.value.trim(), link);
+        toast("Профиль добавлен", "success");
+      }
+      editingId = null;
+      modalOverlay.classList.remove("open");
+    });
+
+    document.getElementById("importBtn").addEventListener("click", async () => {
+      const res = await window.vlessvpn.importProfiles();
+      if (res.ok) toast(`Импортировано профилей: ${res.count}`, "success");
+      else if (res.error) toast(`Ошибка импорта: ${res.error}`, "error");
+    });
+    document.getElementById("exportBtn").addEventListener("click", async () => {
+      const res = await window.vlessvpn.exportProfiles();
+      if (res.ok) toast("Профили экспортированы", "success");
+    });
+
+    const aboutOverlay = document.getElementById("aboutOverlay");
+    document.getElementById("aboutBtn").addEventListener("click", async () => {
+      const info = await window.vlessvpn.getAppInfo();
+      document.getElementById("aboutVersion").textContent = `версия ${info.version}`;
+      document.getElementById("aboutRows").innerHTML = [
+        ["Автор", info.author],
+        ["sing-box", info.singboxVersion || "не найден"],
+        ["Electron", info.electron],
+        ["Chromium", info.chrome],
+        ["Node.js", info.node],
+      ].map(([label, value]) => `
+        <div class="about-row"><span>${escapeHtml(label)}</span><span>${escapeHtml(String(value))}</span></div>
+      `).join("");
+      aboutOverlay.classList.add("open");
+    });
+    document.getElementById("aboutCloseBtn").addEventListener("click", () => aboutOverlay.classList.remove("open"));
+    aboutOverlay.addEventListener("click", (e) => {
+      if (e.target === aboutOverlay) aboutOverlay.classList.remove("open");
+    });
+
+    disconnectBtn.addEventListener("click", () => window.vlessvpn.disconnect());
+    autostart.addEventListener("change", () => window.vlessvpn.setAutostart(autostart.checked));
+    document.getElementById("openLog").addEventListener("click", () => window.vlessvpn.openLog());
+    document.getElementById("quit").addEventListener("click", () => window.vlessvpn.quit());
+
+    window.vlessvpn.onState(render);
+    window.vlessvpn.getState().then(render);
+    window.vlessvpn.onTraffic(handleTraffic);
+
+    timerInterval = setInterval(tickTimer, 1000);
+  </script>
+</body>
+</html>

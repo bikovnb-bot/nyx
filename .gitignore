@@ -1,0 +1,9 @@
+node_modules/
+vendor/sing-box.exe
+vendor/sing-box.zip
+vendor/*.dll
+vendor/sing-box-*/
+vendor/*.json
+*.log
+release/
+_preview.html

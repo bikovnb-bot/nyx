@@ -22,7 +22,7 @@ const plaintextCodec = {
   decode: (buf) => buf.toString("utf8"),
 };
 
-export function createProfileStore(userDataDir, codec = plaintextCodec) {
+export function createProfileStore(userDataDir, codec = plaintextCodec, logger = console.error) {
   const file = profileStorePath(userDataDir);
 
   function save(profiles) {
@@ -31,11 +31,14 @@ export function createProfileStore(userDataDir, codec = plaintextCodec) {
   }
 
   function load() {
+    logger(`profileStore.load(): file=${file} exists=${existsSync(file)}`);
     if (existsSync(file)) {
       try {
-        return JSON.parse(readFileSync(file, "utf8"));
+        const profiles = JSON.parse(readFileSync(file, "utf8"));
+        logger(`profileStore.load(): parsed ${profiles.length} profile(s)`);
+        return profiles;
       } catch (err) {
-        console.error(`Failed to read profiles from ${file}: ${err.message}`);
+        logger(`Failed to read profiles from ${file}: ${err.message}`);
         return [];
       }
     }
@@ -49,7 +52,7 @@ export function createProfileStore(userDataDir, codec = plaintextCodec) {
         unlinkSync(legacy);
         return profiles;
       } catch (err) {
-        console.error(`Could not migrate legacy encrypted profiles from ${legacy}: ${err.message}`);
+        logger(`Could not migrate legacy encrypted profiles from ${legacy}: ${err.message}`);
       }
     }
 

@@ -88,7 +88,7 @@ function userDataDir() {
 }
 
 function profileStore() {
-  return createProfileStore(userDataDir());
+  return createProfileStore(userDataDir(), undefined, (...args) => log("[profileStore]", ...args));
 }
 
 function resetTraffic() {
@@ -280,8 +280,16 @@ function checkForUpdates() {
 }
 
 function getState() {
+  let profiles;
+  try {
+    profiles = profileStore().load();
+  } catch (err) {
+    log("getState: profileStore().load() THREW:", err.stack || err.message);
+    profiles = [];
+  }
+  log("getState: userDataDir=", userDataDir(), "profiles.length=", profiles.length);
   return {
-    profiles: profileStore().load(),
+    profiles,
     activeProfileId,
     connecting,
     connectedAt,

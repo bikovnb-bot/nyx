@@ -1,6 +1,6 @@
 {
   "name": "nyx-vpn-client",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Nyx — cross-platform VLESS+WS+TLS VPN client (TUN mode) built on top of sing-box",
   "author": "Balamut",
   "type": "module",
@@ -36,6 +36,7 @@
     "directories": {
       "output": "release"
     },
+    "artifactName": "${productName}-Setup-${version}.${ext}",
     "files": [
       "bin/**/*",
       "electron/**/*",

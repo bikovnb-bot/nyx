@@ -429,7 +429,7 @@
     box-sizing: border-box;
   }
   .modal.settings-modal {
-    width: 340px;
+    width: 390px;
     max-height: calc(100vh - 98px);
     display: flex;
     flex-direction: column;
@@ -606,12 +606,6 @@
       </div>
     </div>
     <div class="header-actions">
-      <button class="icon-btn" id="importBtn" title="Импорт профилей">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      </button>
-      <button class="icon-btn" id="exportBtn" title="Экспорт профилей">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      </button>
       <button class="icon-btn" id="settingsBtn" title="Настройки">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
       </button>
@@ -730,6 +724,15 @@
         <textarea id="splitDomains" placeholder="example.com&#10;bank.ru"></textarea>
         <label>Процессы Windows (например, chrome.exe)</label>
         <textarea id="splitProcesses" placeholder="chrome.exe&#10;steam.exe"></textarea>
+      </div>
+
+      <div class="settings-section">
+        <h3>Профили</h3>
+        <div class="settings-hint">Импорт/экспорт только списка профилей (JSON).</div>
+        <div class="settings-row-buttons">
+          <button id="exportBtn">Экспорт профилей</button>
+          <button id="importBtn">Импорт профилей</button>
+        </div>
       </div>
 
       <div class="settings-section">

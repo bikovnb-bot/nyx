@@ -17,6 +17,7 @@ import { createProfileStore } from "../src/profileStore.js";
 import { createSettingsStore } from "../src/settingsStore.js";
 import { crescentMoonPng } from "../src/makeIcon.js";
 import { isElevatedWindows, relaunchElevatedWindows } from "../src/elevate.js";
+import { ensureRegistered as ensureElevationTaskRegistered, runViaTask } from "../src/scheduledTask.js";
 import { initLogger, log, getLogFile, getLogTail } from "../src/logger.js";
 import * as killswitch from "../src/killswitch.js";
 import { verifySingBoxBinary } from "../src/singboxIntegrity.js";
@@ -50,20 +51,38 @@ const startedElevated = isElevatedWindows();
 
 if (!startedElevated) {
   log("not elevated, relaunching...");
-  const relaunchArgs = app.isPackaged ? [] : process.argv.slice(1);
-  const result = relaunchElevatedWindows(process.execPath, relaunchArgs);
-  log(
-    "relaunch result:",
-    JSON.stringify({ status: result.status, error: result.error?.message, stderr: result.stderr?.toString() })
-  );
+  // A packaged app can relaunch itself elevated via a pre-registered
+  // Scheduled Task (see scheduledTask.js) with no UAC prompt at all — only
+  // fall back to the classic Start-Process -Verb RunAs dance (which always
+  // prompts) if that task doesn't exist yet or fails to start. Skipped in
+  // dev, where the task would launch a bare Electron.exe without the app
+  // path argument.
+  const launchedViaTask = app.isPackaged && runViaTask(log);
+  if (launchedViaTask) {
+    log("relaunched via scheduled task, no UAC prompt needed");
+  } else {
+    const relaunchArgs = app.isPackaged ? [] : process.argv.slice(1);
+    const result = relaunchElevatedWindows(process.execPath, relaunchArgs);
+    log(
+      "relaunch result:",
+      JSON.stringify({ status: result.status, error: result.error?.message, stderr: result.stderr?.toString() })
+    );
+  }
   // app.quit() is graceful and only takes effect once the app finishes
-  // starting up; by the time spawnSync above returns (UAC can take
+  // starting up; by the time the relaunch above returns (UAC can take
   // seconds), Electron's own "ready" event has often already fired,
   // so whenReady().then() below would still run in this same,
   // about-to-die process and create a second, half-dead tray icon.
   // app.exit() tears the process down immediately instead — which also
   // releases the single-instance lock acquired above.
   app.exit(0);
+}
+
+// We're elevated now (whether via the task above, a fresh UAC prompt, or
+// because the OS session itself is elevated). Make sure the task exists so
+// every later launch can skip the UAC prompt entirely.
+if (app.isPackaged) {
+  ensureElevationTaskRegistered(process.execPath, log);
 }
 
 let tray = null;
@@ -100,6 +119,7 @@ function settingsStore() {
 
 let killSwitchActive = false;
 let userInitiatedDisconnect = false;
+let isQuitting = false;
 const TUN_INTERFACE_NAME = "vlessvpn0";
 
 function resetTraffic() {
@@ -356,8 +376,8 @@ function openMainWindow() {
     return;
   }
   mainWindow = new BrowserWindow({
-    width: 380,
-    height: 640,
+    width: 430,
+    height: 660,
     resizable: false,
     backgroundColor: "#14151b",
     title: "Nyx",
@@ -371,6 +391,7 @@ function openMainWindow() {
   mainWindow.setMenuBarVisibility(false);
   mainWindow.loadFile(path.join(__dirname, "main-window.html"));
   mainWindow.on("close", (e) => {
+    if (isQuitting) return;
     e.preventDefault();
     mainWindow.hide();
   });
@@ -597,5 +618,8 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", (e) => e.preventDefault());
-app.on("before-quit", () => disconnect());
+app.on("before-quit", () => {
+  isQuitting = true;
+  disconnect();
+});
 app.on("second-instance", () => openMainWindow());

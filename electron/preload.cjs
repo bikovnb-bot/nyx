@@ -21,4 +21,9 @@ contextBridge.exposeInMainWorld("vlessvpn", {
   checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
   installUpdate: () => ipcRenderer.invoke("install-update"),
   onUpdateStatus: (cb) => ipcRenderer.on("update-status", (_evt, status) => cb(status)),
+  getSettings: () => ipcRenderer.invoke("get-settings"),
+  updateSettings: (partial) => ipcRenderer.invoke("update-settings", partial),
+  exportBackup: () => ipcRenderer.invoke("export-backup"),
+  importBackup: () => ipcRenderer.invoke("import-backup"),
+  getLogTail: () => ipcRenderer.invoke("get-log-tail"),
 });

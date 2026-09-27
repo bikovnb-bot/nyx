@@ -32,3 +32,20 @@ test("respects a custom interface name", () => {
   const config = buildSingBoxConfig(profile, { interfaceName: "myTun" });
   assert.equal(config.inbounds[0].interface_name, "myTun");
 });
+
+test("adds no split-tunneling rules when disabled or unset", () => {
+  const profile = parseVlessLink("vless://uuid@host:443");
+  const config = buildSingBoxConfig(profile);
+  assert.ok(!config.route.rules.some((r) => r.domain_suffix || r.process_name));
+});
+
+test("routes listed domains and processes directly when split tunneling is enabled", () => {
+  const profile = parseVlessLink("vless://uuid@host:443");
+  const config = buildSingBoxConfig(profile, {
+    splitTunneling: { enabled: true, domains: ["example.com"], processes: ["chrome.exe"] },
+  });
+  const domainRule = config.route.rules.find((r) => r.domain_suffix);
+  const processRule = config.route.rules.find((r) => r.process_name);
+  assert.deepEqual(domainRule, { domain_suffix: ["example.com"], outbound: "direct" });
+  assert.deepEqual(processRule, { process_name: ["chrome.exe"], outbound: "direct" });
+});

@@ -12,11 +12,14 @@ import { connect as netConnect } from "node:net";
 import http from "node:http";
 import { parseVlessLink } from "../src/parseLink.js";
 import { buildSingBoxConfig, CLASH_API_ADDRESS } from "../src/configBuilder.js";
-import { runSingBox, getSingBoxVersion } from "../src/singbox.js";
+import { runSingBox, getSingBoxVersion, findSingBoxBinary } from "../src/singbox.js";
 import { createProfileStore } from "../src/profileStore.js";
+import { createSettingsStore } from "../src/settingsStore.js";
 import { crescentMoonPng } from "../src/makeIcon.js";
 import { isElevatedWindows, relaunchElevatedWindows } from "../src/elevate.js";
-import { initLogger, log, getLogFile } from "../src/logger.js";
+import { initLogger, log, getLogFile, getLogTail } from "../src/logger.js";
+import * as killswitch from "../src/killswitch.js";
+import { verifySingBoxBinary } from "../src/singboxIntegrity.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -91,6 +94,14 @@ function profileStore() {
   return createProfileStore(userDataDir(), undefined, (...args) => log("[profileStore]", ...args));
 }
 
+function settingsStore() {
+  return createSettingsStore(userDataDir(), (...args) => log("[settingsStore]", ...args));
+}
+
+let killSwitchActive = false;
+let userInitiatedDisconnect = false;
+const TUN_INTERFACE_NAME = "vlessvpn0";
+
 function resetTraffic() {
   if (trafficReq) {
     trafficReq.destroy();
@@ -132,6 +143,7 @@ function startTrafficPolling(profileId, attempt = 0) {
 }
 
 function disconnect() {
+  userInitiatedDisconnect = true;
   if (child) {
     child.kill();
     child = null;
@@ -140,11 +152,17 @@ function disconnect() {
   activeProfileId = null;
   connecting = false;
   connectedAt = null;
+  if (killSwitchActive) {
+    killswitch.restore(userDataDir(), log);
+    killSwitchActive = false;
+    notify("Kill switch", "Сеть восстановлена.");
+  }
   broadcastState();
 }
 
 function connect(profile) {
   disconnect();
+  userInitiatedDisconnect = false;
 
   let parsed;
   try {
@@ -158,7 +176,22 @@ function connect(profile) {
     notify("Небезопасное соединение", `Профиль "${profile.name}" отключает проверку TLS-сертификата.`);
   }
 
-  const config = buildSingBoxConfig(parsed);
+  const singboxBinary = findSingBoxBinary();
+  const integrity = verifySingBoxBinary(userDataDir(), singboxBinary, app.getVersion(), log);
+  if (!integrity.ok) {
+    if (integrity.reason === "missing") {
+      notify("sing-box не найден", "Бинарник sing-box отсутствует, подключение невозможно.");
+    } else {
+      notify(
+        "Проверка целостности не пройдена",
+        "Файл sing-box.exe изменился с прошлого запуска этой версии Nyx. Подключение остановлено в целях безопасности."
+      );
+    }
+    return;
+  }
+
+  const settings = settingsStore().load();
+  const config = buildSingBoxConfig(parsed, { interfaceName: TUN_INTERFACE_NAME, splitTunneling: settings.splitTunneling });
   const dir = mkdtempSync(path.join(tmpdir(), "vlessvpn-"));
   const configPath = path.join(dir, "config.json");
   writeFileSync(configPath, JSON.stringify(config, null, 2));
@@ -186,11 +219,23 @@ function connect(profile) {
   child.on("exit", (code) => {
     log("sing-box exited, code=", code);
     if (activeProfileId === profile.id) {
+      const unexpected = !userInitiatedDisconnect && code !== 0;
       resetTraffic();
       activeProfileId = null;
       connecting = false;
       broadcastState();
-      if (code !== 0) notify("Отключено", `sing-box завершился с кодом ${code}`);
+      if (unexpected) {
+        notify("Отключено", `sing-box завершился с кодом ${code}`);
+        if (settingsStore().load().killSwitchEnabled) {
+          log("[killswitch] engaging after unexpected sing-box exit");
+          killswitch.engage(userDataDir(), TUN_INTERFACE_NAME, log);
+          killSwitchActive = true;
+          notify(
+            "Kill switch активирован",
+            "Соединение оборвалось неожиданно — сеть заблокирована, чтобы избежать утечки трафика. Отключите kill switch или переподключитесь в настройках."
+          );
+        }
+      }
     }
   });
 
@@ -294,6 +339,8 @@ function getState() {
     connecting,
     connectedAt,
     autoStart: isAutoStartEnabled(),
+    settings: settingsStore().load(),
+    killSwitchActive,
   };
 }
 
@@ -405,6 +452,61 @@ ipcMain.handle("set-autostart", (_evt, enabled) => {
   broadcastState();
 });
 
+ipcMain.handle("get-settings", () => settingsStore().load());
+
+ipcMain.handle("update-settings", (_evt, partial) => {
+  const next = settingsStore().update(partial);
+  // Kill switch being turned off should immediately lift any active block.
+  if (!next.killSwitchEnabled && killSwitchActive) {
+    killswitch.restore(userDataDir(), log);
+    killSwitchActive = false;
+  }
+  broadcastState();
+  return next;
+});
+
+ipcMain.handle("export-backup", async () => {
+  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+    title: "Экспорт резервной копии",
+    defaultPath: "nyx-backup.json",
+    filters: [{ name: "JSON", extensions: ["json"] }],
+  });
+  if (canceled || !filePath) return { ok: false };
+  const backup = { profiles: profileStore().load(), settings: settingsStore().load() };
+  writeFileSync(filePath, JSON.stringify(backup, null, 2));
+  return { ok: true, filePath };
+});
+
+ipcMain.handle("import-backup", async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    title: "Импорт резервной копии",
+    filters: [{ name: "JSON", extensions: ["json"] }],
+    properties: ["openFile"],
+  });
+  if (canceled || !filePaths[0]) return { ok: false };
+  try {
+    const data = JSON.parse(readFileSync(filePaths[0], "utf8"));
+    let count = 0;
+    if (Array.isArray(data.profiles)) {
+      for (const p of data.profiles) {
+        if (p && typeof p.link === "string" && p.link.startsWith("vless://")) {
+          profileStore().add({ name: p.name || p.link, link: p.link });
+          count++;
+        }
+      }
+    }
+    if (data.settings && typeof data.settings === "object") {
+      settingsStore().update(data.settings);
+    }
+    broadcastState();
+    return { ok: true, count };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle("get-log-tail", () => getLogTail());
+
 ipcMain.handle("open-log", () => shell.showItemInFolder(getLogFile()));
 
 ipcMain.handle("quit", () => app.quit());
@@ -479,6 +581,10 @@ app.whenReady().then(() => {
     return;
   }
   log("app ready, tray starting");
+  if (killswitch.isEngaged(userDataDir())) {
+    log("[killswitch] stale engaged state found at startup, restoring network");
+    killswitch.restore(userDataDir(), log);
+  }
   try {
     tray = new Tray(ICON_DISCONNECTED);
     tray.on("click", openMainWindow);

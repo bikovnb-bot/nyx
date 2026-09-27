@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 env:
-  SINGBOX_VERSION: "1.13.20"
+  SINGBOX_VERSION: "1.14.2"
 
 jobs:
   build:
@@ -29,6 +29,21 @@ jobs:
       - name: Run tests
         shell: bash
         run: npm test
+
+      # Informational only — never fails the build. Just a nudge so a pinned
+      # SINGBOX_VERSION doesn't quietly go stale for months; bumping it is
+      # still a manual, tested decision (see README "Выпуск релиза").
+      - name: Warn if a newer sing-box release exists
+        shell: bash
+        run: |
+          latest=$(curl -fsSL https://api.github.com/repos/SagerNet/sing-box/releases/latest | grep -oP '"tag_name":\s*"v\K[^"]+')
+          if [ -z "$latest" ]; then
+            echo "::warning::Could not fetch the latest sing-box release from GitHub to compare against SINGBOX_VERSION=$SINGBOX_VERSION."
+          elif [ "$latest" != "$SINGBOX_VERSION" ]; then
+            echo "::warning::Pinned SINGBOX_VERSION is $SINGBOX_VERSION but sing-box $latest is now available: https://github.com/SagerNet/sing-box/releases/tag/v$latest — consider updating after checking its changelog for breaking config changes."
+          else
+            echo "SINGBOX_VERSION=$SINGBOX_VERSION is up to date with the latest sing-box release."
+          fi
 
       - name: Download sing-box
         shell: pwsh

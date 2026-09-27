@@ -41,6 +41,18 @@ function buildTls(profile) {
 
 export const CLASH_API_ADDRESS = "127.0.0.1:9095";
 
+function buildSplitTunnelRules(splitTunneling) {
+  if (!splitTunneling?.enabled) return [];
+  const rules = [];
+  if (splitTunneling.domains?.length) {
+    rules.push({ domain_suffix: splitTunneling.domains, outbound: "direct" });
+  }
+  if (splitTunneling.processes?.length) {
+    rules.push({ process_name: splitTunneling.processes, outbound: "direct" });
+  }
+  return rules;
+}
+
 export function buildSingBoxConfig(profile, opts = {}) {
   const tunAddress = opts.tunAddress || ["172.19.0.1/30", "fdfe:dcba:9876::1/126"];
 
@@ -84,6 +96,7 @@ export function buildSingBoxConfig(profile, opts = {}) {
         { action: "sniff" },
         { port: 53, action: "hijack-dns" },
         { ip_is_private: true, outbound: "direct" },
+        ...buildSplitTunnelRules(opts.splitTunneling),
       ],
       final: "proxy",
       auto_detect_interface: true,

@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 
 let logFile = null;
@@ -21,4 +21,10 @@ export function log(...parts) {
 
 export function getLogFile() {
   return logFile;
+}
+
+export function getLogTail(maxLines = 300) {
+  if (!logFile || !existsSync(logFile)) return "";
+  const lines = readFileSync(logFile, "utf8").split(/\r?\n/);
+  return lines.slice(-maxLines).join("\n");
 }

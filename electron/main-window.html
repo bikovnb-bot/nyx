@@ -396,7 +396,7 @@
     margin-bottom: 5px;
     margin-top: 12px;
   }
-  .modal input {
+  .modal input:not([type="checkbox"]) {
     width: 100%;
     font-family: inherit;
     font-size: 13px;
@@ -406,12 +406,103 @@
     color: var(--text);
     padding: 8px 10px;
   }
-  .modal input:focus { outline: none; border-color: var(--accent); }
+  .modal input:not([type="checkbox"]):focus { outline: none; border-color: var(--accent); }
+  .modal .checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .modal .checkbox-row input[type="checkbox"] {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+  }
   .modal .actions {
     display: flex;
     gap: 8px;
     margin-top: 18px;
   }
+  #settingsOverlay {
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 78px;
+    box-sizing: border-box;
+  }
+  .modal.settings-modal {
+    width: 340px;
+    max-height: calc(100vh - 98px);
+    display: flex;
+    flex-direction: column;
+    padding: 20px 0 0;
+  }
+  .settings-modal h2 { padding: 0 20px; flex-shrink: 0; }
+  .settings-scroll {
+    overflow-y: auto;
+    padding: 0 20px 4px;
+    flex: 1;
+    min-height: 0;
+  }
+  .settings-modal .actions {
+    flex-shrink: 0;
+    padding: 12px 20px 20px;
+    margin-top: 0;
+    border-top: 1px solid var(--border);
+  }
+  .settings-section {
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
+    margin-top: 14px;
+  }
+  .settings-section:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+  .settings-section h3 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    color: var(--muted);
+    margin: 0 0 8px;
+  }
+  .settings-hint {
+    font-size: 11px;
+    color: var(--muted);
+    margin: 4px 0 8px;
+    line-height: 1.4;
+  }
+  .modal textarea {
+    width: 100%;
+    font-family: inherit;
+    font-size: 12px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--text);
+    padding: 8px 10px;
+    resize: vertical;
+    min-height: 50px;
+  }
+  .modal textarea:focus { outline: none; border-color: var(--accent); }
+  .settings-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  #logView {
+    display: none;
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-size: 10.5px;
+    line-height: 1.5;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px;
+    max-height: 180px;
+    overflow-y: auto;
+    margin-top: 8px;
+  }
+  #logView.visible { display: block; }
+  .settings-row-buttons { display: flex; gap: 8px; margin-top: 8px; }
+  .settings-row-buttons button { flex: 1; font-size: 11.5px; padding: 7px 8px; }
 
   .about-modal { text-align: center; }
   .about-logo {
@@ -521,6 +612,9 @@
       <button class="icon-btn" id="exportBtn" title="Экспорт профилей">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       </button>
+      <button class="icon-btn" id="settingsBtn" title="Настройки">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+      </button>
       <button class="icon-btn" id="aboutBtn" title="О программе">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="11"/><circle cx="12" cy="7.5" r="0.9" fill="currentColor" stroke="none"/></svg>
       </button>
@@ -598,6 +692,72 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="settingsOverlay">
+    <div class="modal settings-modal">
+      <h2>Настройки</h2>
+      <div class="settings-scroll">
+
+      <div class="settings-section">
+        <h3>Kill switch</h3>
+        <div class="settings-toggle-row">
+          <label class="checkbox-row" style="padding:0;">
+            <input type="checkbox" id="killSwitchToggle" />
+            Блокировать сеть при обрыве VPN
+          </label>
+        </div>
+        <div class="settings-hint">
+          Если сеанс sing-box неожиданно завершится, все сетевые адаптеры,
+          кроме VPN-туннеля, будут отключены — это исключает утечку
+          трафика в обход VPN. Сеть восстанавливается автоматически при
+          переподключении или отключении этой опции.
+        </div>
+        <div class="settings-hint" id="killSwitchActiveHint" style="display:none; color: var(--danger);">
+          ⚠ Kill switch сейчас активен: сеть заблокирована.
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Раздельное туннелирование</h3>
+        <label class="checkbox-row" style="padding:0;">
+          <input type="checkbox" id="splitTunnelToggle" />
+          Включить раздельное туннелирование
+        </label>
+        <div class="settings-hint">
+          Перечисленные ниже домены и процессы будут ходить напрямую, в
+          обход VPN. Один элемент на строку.
+        </div>
+        <label>Домены (например, example.com)</label>
+        <textarea id="splitDomains" placeholder="example.com&#10;bank.ru"></textarea>
+        <label>Процессы Windows (например, chrome.exe)</label>
+        <textarea id="splitProcesses" placeholder="chrome.exe&#10;steam.exe"></textarea>
+      </div>
+
+      <div class="settings-section">
+        <h3>Резервная копия</h3>
+        <div class="settings-hint">Профили и настройки одним файлом.</div>
+        <div class="settings-row-buttons">
+          <button id="exportBackupBtn">Экспорт</button>
+          <button id="importBackupBtn">Импорт</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Диагностика</h3>
+        <div class="settings-row-buttons">
+          <button id="showLogBtn">Показать журнал</button>
+          <button id="copyLogBtn">Скопировать</button>
+        </div>
+        <pre id="logView"></pre>
+      </div>
+
+      </div>
+      <div class="actions">
+        <button id="settingsCancelBtn">Закрыть</button>
+        <button class="primary" id="settingsSaveBtn">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toasts"></div>
 
   <script>
@@ -620,7 +780,7 @@
     const trafficUpSpeed = document.getElementById("trafficUpSpeed");
     const trafficTotal = document.getElementById("trafficTotal");
 
-    let currentState = { profiles: [], activeProfileId: null, connecting: false, connectedAt: null, autoStart: false };
+    let currentState = { profiles: [], activeProfileId: null, connecting: false, connectedAt: null, autoStart: false, killSwitchActive: false };
     let editingId = null;
     let confirmRemoveId = null;
     let searchQuery = "";
@@ -714,6 +874,9 @@
       } else if (connecting) {
         dot.className = "dot connecting";
         statusText.textContent = "Подключение...";
+      } else if (state.killSwitchActive) {
+        dot.className = "dot";
+        statusText.textContent = "Отключено · Kill switch заблокировал сеть";
       } else {
         dot.className = "dot";
         statusText.textContent = "Отключено";
@@ -956,6 +1119,69 @@
     document.getElementById("aboutCloseBtn").addEventListener("click", () => aboutOverlay.classList.remove("open"));
     aboutOverlay.addEventListener("click", (e) => {
       if (e.target === aboutOverlay) aboutOverlay.classList.remove("open");
+    });
+
+    const settingsOverlay = document.getElementById("settingsOverlay");
+    const killSwitchToggle = document.getElementById("killSwitchToggle");
+    const killSwitchActiveHint = document.getElementById("killSwitchActiveHint");
+    const splitTunnelToggle = document.getElementById("splitTunnelToggle");
+    const splitDomains = document.getElementById("splitDomains");
+    const splitProcesses = document.getElementById("splitProcesses");
+    const logView = document.getElementById("logView");
+
+    function linesToList(text) {
+      return text.split("\n").map((s) => s.trim()).filter(Boolean);
+    }
+
+    document.getElementById("settingsBtn").addEventListener("click", async () => {
+      const settings = await window.vlessvpn.getSettings();
+      killSwitchToggle.checked = !!settings.killSwitchEnabled;
+      killSwitchActiveHint.style.display = currentState.killSwitchActive ? "block" : "none";
+      splitTunnelToggle.checked = !!settings.splitTunneling?.enabled;
+      splitDomains.value = (settings.splitTunneling?.domains || []).join("\n");
+      splitProcesses.value = (settings.splitTunneling?.processes || []).join("\n");
+      logView.classList.remove("visible");
+      logView.textContent = "";
+      settingsOverlay.classList.add("open");
+    });
+    document.getElementById("settingsCancelBtn").addEventListener("click", () => settingsOverlay.classList.remove("open"));
+    settingsOverlay.addEventListener("click", (e) => {
+      if (e.target === settingsOverlay) settingsOverlay.classList.remove("open");
+    });
+    document.getElementById("settingsSaveBtn").addEventListener("click", async () => {
+      await window.vlessvpn.updateSettings({
+        killSwitchEnabled: killSwitchToggle.checked,
+        splitTunneling: {
+          enabled: splitTunnelToggle.checked,
+          domains: linesToList(splitDomains.value),
+          processes: linesToList(splitProcesses.value),
+        },
+      });
+      toast("Настройки сохранены", "success");
+      settingsOverlay.classList.remove("open");
+    });
+
+    document.getElementById("exportBackupBtn").addEventListener("click", async () => {
+      const res = await window.vlessvpn.exportBackup();
+      if (res.ok) toast("Резервная копия сохранена", "success");
+    });
+    document.getElementById("importBackupBtn").addEventListener("click", async () => {
+      const res = await window.vlessvpn.importBackup();
+      if (res.ok) toast(`Импортировано профилей: ${res.count}`, "success");
+      else if (res.error) toast(`Ошибка импорта: ${res.error}`, "error");
+    });
+
+    document.getElementById("showLogBtn").addEventListener("click", async () => {
+      const tail = await window.vlessvpn.getLogTail();
+      logView.textContent = tail || "Журнал пуст.";
+      logView.classList.add("visible");
+    });
+    document.getElementById("copyLogBtn").addEventListener("click", async () => {
+      const tail = logView.classList.contains("visible") ? logView.textContent : await window.vlessvpn.getLogTail();
+      logView.textContent = tail || "Журнал пуст.";
+      logView.classList.add("visible");
+      navigator.clipboard.writeText(tail || "");
+      toast("Журнал скопирован", "success");
     });
 
     disconnectBtn.addEventListener("click", () => window.vlessvpn.disconnect());

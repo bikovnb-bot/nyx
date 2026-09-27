@@ -43,7 +43,21 @@ jobs:
       - name: Regenerate icons
         run: npm run icons
 
-      - name: Build and publish the Windows installer
-        run: npm run release
+      - name: Build the Windows installer
+        run: npm run dist
+
+      # electron-builder's own --publish flow races itself when uploading
+      # multiple assets in parallel: each upload independently checks "does
+      # the release exist yet?", finds no, and tries to create it — the
+      # loser of that race fails silently and the step still reports
+      # success with assets missing. Build only, then upload with a
+      # dedicated, single-writer action instead.
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/*.exe
+            release/*.exe.blockmap
+            release/latest.yml
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

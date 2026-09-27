@@ -1,6 +1,6 @@
 {
   "name": "nyx-vpn-client",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Nyx — cross-platform VLESS+WS+TLS VPN client (TUN mode) built on top of sing-box",
   "author": "Balamut",
   "type": "module",
@@ -16,8 +16,7 @@
     "icons": "node scripts/generate-icons.js",
     "dist": "electron-builder --win nsis --publish never",
     "dist:portable": "electron-builder --win portable --publish never",
-    "dist:dir": "electron-builder --win dir",
-    "release": "electron-builder --win nsis --publish always"
+    "dist:dir": "electron-builder --win dir"
   },
   "dependencies": {
     "commander": "^12.1.0",

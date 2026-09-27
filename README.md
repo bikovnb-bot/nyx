@@ -91,11 +91,13 @@ npm run dist:portable  # собрать portable-версию (без самоп
 Пуш git-тега `vX.Y.Z` в `main` запускает
 [`.github/workflows/release.yml`](.github/workflows/release.yml):
 устанавливает зависимости, прогоняет тесты, скачивает закреплённую
-версию `sing-box`, собирает NSIS-инсталлятор и публикует его в
-[Releases](https://github.com/bikovnb-bot/nyx/releases) вместе с
-метаданными для автообновления (`latest.yml`). Локально тот же процесс
-запускается через `npm run release` (требует `GH_TOKEN` в переменных
-окружения).
+версию `sing-box`, собирает NSIS-инсталлятор (`npm run dist`) и
+загружает его в [Releases](https://github.com/bikovnb-bot/nyx/releases)
+вместе с метаданными для автообновления (`latest.yml`) через
+`softprops/action-gh-release`. Загрузка вынесена в отдельный шаг,
+а не через встроенный `--publish` electron-builder, потому что тот
+пытается создать релиз параллельно из нескольких загрузок файлов и
+иногда проигрывает эту гонку без единой ошибки в логе.
 
 ## Примечания
 

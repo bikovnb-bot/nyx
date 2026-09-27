@@ -21,6 +21,7 @@ import { ensureRegistered as ensureElevationTaskRegistered, runViaTask } from ".
 import { initLogger, log, getLogFile, getLogTail } from "../src/logger.js";
 import * as killswitch from "../src/killswitch.js";
 import { verifySingBoxBinary } from "../src/singboxIntegrity.js";
+import { redactVlessLink } from "../src/redact.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -216,7 +217,7 @@ function connect(profile) {
   const configPath = path.join(dir, "config.json");
   writeFileSync(configPath, JSON.stringify(config, null, 2));
 
-  log("connecting to", profile.name, profile.link, "config:", configPath);
+  log("connecting to", profile.name, redactVlessLink(profile.link), "config:", configPath);
 
   child = runSingBox(configPath, {
     onLog: (line) => {

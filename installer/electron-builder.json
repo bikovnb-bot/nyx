@@ -1,0 +1,29 @@
+{
+  "appId": "com.nyx.installer",
+  "productName": "Nyx Installer",
+  "electronVersion": "43.7.9",
+  "artifactName": "Nyx-Installer-${version}.${ext}",
+  "directories": {
+    "output": "../release-installer"
+  },
+  "files": [
+    "main.cjs",
+    "preload.cjs",
+    "index.html",
+    "renderer.js",
+    "assets/**",
+    "package.json"
+  ],
+  "win": {
+    "target": "portable",
+    "icon": "../build/icon.ico",
+    "requestedExecutionLevel": "asInvoker"
+  },
+  "electronLanguages": [
+    "ru",
+    "en-US"
+  ],
+  "portable": {
+    "splashImage": "splash.bmp"
+  }
+}

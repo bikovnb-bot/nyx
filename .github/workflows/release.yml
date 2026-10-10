@@ -58,6 +58,9 @@ jobs:
       - name: Build the Windows installer
         run: npm run dist
 
+      - name: Build the installer wizard
+        run: npm run dist:installer
+
       # electron-builder's own --publish flow races itself when uploading
       # multiple assets in parallel: each upload independently checks "does
       # the release exist yet?", finds no, and tries to create it — the
@@ -71,5 +74,6 @@ jobs:
             release/*.exe
             release/*.exe.blockmap
             release/latest.yml
+            release-installer/Nyx-Installer-*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

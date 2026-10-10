@@ -14,7 +14,11 @@ VLESS+WS+TLS (в том числе тех, что генерирует 3x-ui). N
 
 Готовый установщик для Windows — на странице
 [Releases](https://github.com/bikovnb-bot/nyx/releases). Скачайте
-`Nyx Setup x.x.x.exe`, запустите и следуйте шагам мастера установки.
+`Nyx-Installer-x.x.x.exe` (мастер установки в стиле приложения: сам
+скачивает свежую версию Nyx, проверяет контрольную сумму и ставит её в
+папку пользователя без прав администратора). Запасной вариант —
+обычный установщик `Nyx-Setup-x.x.x.exe`; именно его использует
+автообновление внутри приложения.
 
 ### ⚠️ Предупреждение Windows SmartScreen при запуске
 
@@ -124,6 +128,7 @@ Ctrl+C отключает VPN и снимает TUN-интерфейс.
 npm run icons       # пересобрать все иконки из build/icon-source.jpg (Windows PowerShell)
 npm run dist         # собрать NSIS-инсталлятор для Windows (release/)
 npm run dist:portable  # собрать portable-версию (без самоповышения прав — см. примечание ниже)
+npm run dist:installer # собрать мастер установки (installer/ → release-installer/)
 ```
 
 ## Выпуск релиза

@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:" />
+<title>Установка Nyx</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0B0E14;
+    --text: #F1F5F9;
+    --muted: #94A3B8;
+    --dim: #64748B;
+    --emerald: #10B981;
+    --purple: #8B5CF6;
+    --danger: #EF4444;
+    --card: rgba(22, 27, 34, 0.55);
+    --border: rgba(255, 255, 255, 0.09);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-drag: none; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+    font-family: "Segoe UI Variable Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+
+  .shell { display: flex; height: 100%; border: 1px solid rgba(255,255,255,0.08); }
+
+  /* ---------- left art panel ---------- */
+  .art { width: 270px; flex: none; position: relative; overflow: hidden;
+    background: radial-gradient(circle at 15% 8%, rgba(139,92,246,.55), transparent 55%),
+                radial-gradient(circle at 95% 98%, rgba(16,185,129,.45), transparent 58%), #0B0E14;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; }
+  .art img { width: 112px; height: 112px; border-radius: 26px;
+    box-shadow: 0 0 52px rgba(139,92,246,.6), 0 0 0 1px rgba(255,255,255,.14); }
+  .art h1 { font-size: 34px; font-weight: 700; letter-spacing: 1px; }
+  .art p { font-size: 12.5px; color: var(--muted); text-align: center; line-height: 1.55; padding: 0 28px; }
+  .art .safe { position: absolute; bottom: 22px; font-size: 11.5px; color: var(--emerald); letter-spacing: .4px; }
+
+  /* ---------- right content ---------- */
+  .main { flex: 1; position: relative; display: flex; flex-direction: column; min-width: 0; }
+  .titlebar { height: 38px; flex: none; display: flex; justify-content: flex-end; -webkit-app-region: drag; }
+  .titlebar button { -webkit-app-region: no-drag; width: 46px; height: 38px; border: 0; background: transparent; color: var(--muted);
+    font-size: 13px; cursor: pointer; transition: background .15s, color .15s; }
+  .titlebar button:hover { background: rgba(255,255,255,.07); color: var(--text); }
+  .titlebar button.x:hover { background: #E81123; color: #fff; }
+  body[data-busy="1"] .titlebar button.x { opacity: .35; pointer-events: none; }
+
+  .screen { display: none; flex: 1; padding: 6px 44px 38px; flex-direction: column; justify-content: center; animation: in .35s ease; }
+  body[data-screen="welcome"] #s-welcome,
+  body[data-screen="install"] #s-install,
+  body[data-screen="done"] #s-done,
+  body[data-screen="error"] #s-error { display: flex; }
+  @keyframes in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  h2 { font-size: 26px; font-weight: 700; margin-bottom: 8px; }
+  .sub { color: var(--muted); font-size: 14px; line-height: 1.55; margin-bottom: 24px; }
+
+  .field { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 11px 14px;
+    display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .field .lbl { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .6px; }
+  .field .val { font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+  .field .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+
+  .btn { border: 1px solid var(--border); background: rgba(255,255,255,.05); color: var(--text); border-radius: 10px;
+    padding: 9px 16px; font: inherit; font-size: 13px; cursor: pointer; transition: all .15s; }
+  .btn:hover { background: rgba(255,255,255,.1); border-color: rgba(139,92,246,.5); }
+  .btn.primary { background: linear-gradient(180deg, #14C58F, #0E9F6E); border-color: #34D399; color: #03180F; font-weight: 700;
+    font-size: 15px; padding: 13px 28px; border-radius: 12px; box-shadow: 0 8px 28px rgba(16,185,129,.35); }
+  .btn.primary:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 12px 34px rgba(16,185,129,.45); }
+  .btn.primary:active { transform: none; }
+  .row { display: flex; align-items: center; gap: 14px; margin-top: 8px; }
+  .note { font-size: 12px; color: var(--dim); margin-top: 18px; display: flex; gap: 8px; align-items: center; }
+  .note b { color: var(--emerald); font-weight: 600; }
+
+  /* ---------- progress ---------- */
+  .ring-wrap { display: flex; align-items: center; gap: 28px; }
+  .ring { position: relative; width: 150px; height: 150px; flex: none; animation: breathe 2.2s ease-in-out infinite; }
+  @keyframes breathe { 0%,100% { filter: drop-shadow(0 0 8px rgba(16,185,129,.3)); } 50% { filter: drop-shadow(0 0 26px rgba(16,185,129,.7)); } }
+  .ring svg { transform: rotate(-90deg); }
+  .ring .bg { stroke: rgba(255,255,255,.08); }
+  .ring .fg { stroke: url(#g); stroke-linecap: round; transition: stroke-dashoffset .6s ease; }
+  .ring .pct { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 700; }
+  .stage { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
+  .hint { font-size: 13px; color: var(--muted); line-height: 1.5; }
+
+  /* ---------- done / error ---------- */
+  .badge { width: 76px; height: 76px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 22px; }
+  .badge.ok { background: rgba(16,185,129,.14); border: 2px solid var(--emerald); box-shadow: 0 0 34px rgba(16,185,129,.4); animation: pop .5s cubic-bezier(.2,1.4,.4,1); }
+  .badge.err { background: rgba(239,68,68,.12); border: 2px solid var(--danger); box-shadow: 0 0 34px rgba(239,68,68,.35); }
+  @keyframes pop { from { transform: scale(.4); opacity: 0; } to { transform: none; opacity: 1; } }
+  .err-msg { font-size: 12.5px; color: var(--muted); background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 12px; margin-bottom: 20px; line-height: 1.5; word-break: break-word; user-select: text; }
+</style>
+</head>
+<body data-screen="welcome" data-busy="0">
+<div class="shell">
+  <aside class="art">
+    <img src="assets/logo.png" alt="" />
+    <h1>Nyx</h1>
+    <p>Быстрый и безопасный VPN для Windows</p>
+    <div class="safe">● защита трафика</div>
+  </aside>
+
+  <section class="main">
+    <div class="titlebar">
+      <button id="min" title="Свернуть">&#8211;</button>
+      <button id="close" class="x" title="Закрыть">&#10005;</button>
+    </div>
+
+    <!-- welcome -->
+    <div class="screen" id="s-welcome">
+      <h2 id="wTitle">Установка Nyx</h2>
+      <p class="sub" id="wSub">Приложение будет установлено в вашу папку пользователя. Права администратора не нужны.</p>
+      <div class="field">
+        <div class="txt"><span class="lbl">Папка установки</span><span class="val" id="dir" dir="ltr"></span></div>
+        <button class="btn" id="change">Изменить</button>
+      </div>
+      <div class="row">
+        <button class="btn primary" id="install">Установить</button>
+      </div>
+      <div class="note"><b>●</b><span id="ver">Версия</span></div>
+    </div>
+
+    <!-- installing -->
+    <div class="screen" id="s-install">
+      <div class="ring-wrap">
+        <div class="ring">
+          <svg width="150" height="150" viewBox="0 0 150 150">
+            <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8B5CF6"/><stop offset="1" stop-color="#10B981"/></linearGradient></defs>
+            <circle class="bg" cx="75" cy="75" r="64" fill="none" stroke-width="9"/>
+            <circle class="fg" id="fg" cx="75" cy="75" r="64" fill="none" stroke-width="9" stroke-dasharray="402.1" stroke-dashoffset="402.1"/>
+          </svg>
+          <div class="pct" id="pct">0%</div>
+        </div>
+        <div>
+          <div class="stage" id="stage">Подготовка…</div>
+          <div class="hint">Это займёт около минуты.<br />Не закрывайте окно, пока идёт установка.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- done -->
+    <div class="screen" id="s-done">
+      <div class="badge ok">
+        <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+      </div>
+      <h2>Nyx установлен</h2>
+      <p class="sub">Приложение готово к работе. Добавьте профиль или ссылку на подписку и нажмите кнопку включения.</p>
+      <div class="row">
+        <button class="btn primary" id="launch">Запустить Nyx</button>
+        <button class="btn" id="finish">Закрыть</button>
+      </div>
+    </div>
+
+    <!-- error -->
+    <div class="screen" id="s-error">
+      <div class="badge err">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#EF4444" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </div>
+      <h2>Не удалось установить</h2>
+      <div class="err-msg" id="errMsg"></div>
+      <div class="row">
+        <button class="btn primary" id="retry">Повторить</button>
+        <button class="btn" id="giveup">Закрыть</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script src="renderer.js"></script>
+</body>
+</html>

@@ -7,3 +7,6 @@ vendor/*.json
 *.log
 release/
 _preview.html
+
+installer/payload/
+release-installer/

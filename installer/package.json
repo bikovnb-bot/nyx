@@ -1,0 +1,8 @@
+{
+  "name": "nyx-installer",
+  "version": "0.4.5",
+  "description": "Nyx installer wizard",
+  "author": "Balamut",
+  "private": true,
+  "main": "main.cjs"
+}

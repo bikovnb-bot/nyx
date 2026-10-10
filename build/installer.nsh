@@ -11,8 +11,12 @@
 !define MUI_FINISHPAGE_TEXT "Приложение готово к работе.$\r$\n$\r$\nДобавьте профиль или ссылку на подписку и нажмите кнопку включения."
 !define MUI_FINISHPAGE_RUN_TEXT "Запустить Nyx"
 
+
 !macro customHeader
 !ifndef BUILD_UNINSTALLER
+!ifndef StrContains
+  !include StrContains.nsh
+!endif
 ; ---- colouring helpers -------------------------------------------------
 
 ; Replace the text of a wizard button with a bitmap in the app's style.
@@ -90,19 +94,23 @@ Function nyxPaintPage
   ${EndWhile}
 FunctionEnd
 
+!ifndef ONE_CLICK
 Function nyxFinishShow
   Call nyxPaintParent
   ; the themed checkbox ignores text colours; the classic one does not
   System::Call 'uxtheme::SetWindowTheme(p $mui.FinishPage.Run, w "", w "")'
   SetCtlColors $mui.FinishPage.Run "F1F5F9" "0B0E14"
 FunctionEnd
+!endif
 
+!ifndef ONE_CLICK
 Function nyxDirShow
   Call nyxPaintPage
   ; the path box a little lighter than the page
   GetDlgItem $0 $R0 1019
   SetCtlColors $0 "F1F5F9" "141923"
 FunctionEnd
+!endif
 
 Function nyxInstFilesShow
   Call nyxPaintPage
@@ -115,6 +123,7 @@ Function nyxInstFilesShow
   GetDlgItem $0 $R0 1016
   SetCtlColors $0 "94A3B8" "0B0E14"
 FunctionEnd
+
 !endif
 !macroend
 
@@ -126,7 +135,9 @@ FunctionEnd
 
   ; The directory page is inserted here, by us, instead of by the template
   ; (allowToChangeInstallationDirectory is off) so that it can be painted.
-  !include StrContains.nsh
+  !ifndef StrContains
+    !include StrContains.nsh
+  !endif
   Function nyxDirPre
     ${if} ${isUpdated}
       Abort

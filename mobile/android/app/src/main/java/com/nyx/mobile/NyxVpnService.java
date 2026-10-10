@@ -67,6 +67,9 @@ public class NyxVpnService extends VpnService implements PlatformInterface, Comm
     static volatile String lastError = "";
     static volatile String pendingConfig = null;
     static volatile String pendingName = "Nyx";
+    /** Per-app routing for the next start: only these apps use the VPN, or all but these. */
+    static volatile List<String> pendingInclude = new ArrayList<>();
+    static volatile List<String> pendingExclude = new ArrayList<>();
     static volatile Listener listener = null;
     private static boolean libboxReady = false;
 
@@ -134,7 +137,17 @@ public class NyxVpnService extends VpnService implements PlatformInterface, Comm
             startNetworkMonitor();
             commandServer = new CommandServer(this, this);
             commandServer.start();
-            commandServer.startOrReloadService(config, new OverrideOptions());
+            OverrideOptions override = new OverrideOptions();
+            List<String> include = pendingInclude;
+            List<String> exclude = pendingExclude;
+            if (include != null && !include.isEmpty()) {
+                List<String> withSelf = new ArrayList<>(include);
+                withSelf.add(getPackageName());
+                override.setIncludePackage(new Strings(withSelf.iterator(), withSelf.size()));
+            } else if (exclude != null && !exclude.isEmpty()) {
+                override.setExcludePackage(new Strings(exclude.iterator(), exclude.size()));
+            }
+            commandServer.startOrReloadService(config, override);
             setState("started", null);
             showNotification("Подключено");
         } catch (Throwable t) {

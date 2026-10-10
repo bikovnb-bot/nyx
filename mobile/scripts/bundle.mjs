@@ -1,5 +1,7 @@
-// Bundles the shared Nyx modules for the phone into www/nyx-core.js (global NyxCore).
+// Bundles the shared Nyx modules for the phone into www/nyx-core.js (global NyxCore)
+// and copies the flag icons and routing lists next to the page.
 import { build } from "esbuild";
+import { cpSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,3 +20,9 @@ await build({
   },
   logLevel: "info",
 });
+mkdirSync(path.join(root, "www", "flags"), { recursive: true });
+cpSync(path.join(root, "..", "electron", "assets", "flags"), path.join(root, "www", "flags"), { recursive: true });
+cpSync(path.join(root, "..", "installer", "assets", "logo.png"), path.join(root, "www", "logo.png"));
+mkdirSync(path.join(root, "www", "rules"), { recursive: true });
+cpSync(path.join(root, "..", "vendor", "rules"), path.join(root, "www", "rules"), { recursive: true });
+cpSync(path.join(root, "..", "electron", "assets", "vendor", "jsQR.js"), path.join(root, "www", "jsQR.js"));

@@ -169,3 +169,8 @@ npm run dist:installer # собрать мастер установки (install
 Флаги стран — из набора [flag-icons](https://github.com/lipis/flag-icons) (лицензия MIT, текст — `electron/assets/flags/LICENSE-flag-icons.txt`).
 Генерация QR-кодов — [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) (MIT),
 распознавание — [jsQR](https://github.com/cozmo/jsQR) (Apache-2.0, текст лицензии — `electron/assets/vendor/LICENSE-jsQR.txt`).
+
+## Лицензия
+
+GNU GPL версии 3 или новее, см. файл [LICENSE](LICENSE). Мобильное приложение использует ядро
+sing-box (GPL-3.0), поэтому его исходный код открыт.

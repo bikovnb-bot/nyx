@@ -20,3 +20,8 @@ mobile/android/app/libs/libbox.aar
 mobile/android/capacitor-cordova-android-plugins/build/
 mobile/android/local.properties
 mobile/www/nyx-core.js
+
+mobile/www/flags/
+mobile/www/rules/
+mobile/www/logo.png
+mobile/www/jsQR.js

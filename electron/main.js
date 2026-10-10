@@ -971,7 +971,8 @@ ipcMain.handle("check-for-updates", () => {
 });
 
 ipcMain.handle("install-update", () => {
-  autoUpdater.quitAndInstall();
+  // silent: no installer window; force-run: Nyx starts again once it is installed
+  autoUpdater.quitAndInstall(true, true);
 });
 
 function buildTrayMenu() {

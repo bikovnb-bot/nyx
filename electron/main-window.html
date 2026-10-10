@@ -1651,6 +1651,17 @@
   .issue-banner button { flex: none; border: 0; background: transparent; color: var(--text-dim); font-size: 16px; line-height: 1; cursor: pointer; padding: 0 2px; }
   .issue-banner button:hover { color: var(--text-strong); }
 
+  /* speed test window */
+  .speed-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .speed-tile { padding: 12px 8px; text-align: center; border-radius: 12px; background: rgba(var(--ink), 0.04); border: 1px solid rgba(var(--ink), 0.08); }
+  .speed-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .5px; }
+  .speed-label.down { color: var(--accent-emerald); }
+  .speed-label.up { color: var(--accent-purple); }
+  .speed-num { font-size: 26px; font-weight: 700; margin: 4px 0 0; font-variant-numeric: tabular-nums; }
+  .speed-unit { font-size: 11px; color: var(--text-dim); }
+  .speed-bar { height: 4px; border-radius: 2px; background: rgba(var(--ink), 0.08); margin-top: 14px; overflow: hidden; }
+  .speed-bar div { height: 100%; width: 0; border-radius: 2px; background: linear-gradient(90deg, var(--accent-purple), var(--accent-emerald)); transition: width .4s ease; }
+
   /* leak check window */
   .leak-row { display: flex; justify-content: space-between; gap: 14px; padding: 7px 0; border-bottom: 1px solid rgba(var(--ink), 0.06); font-size: 13px; }
   .leak-row span:first-child { color: var(--text-dim); flex: none; }
@@ -2067,6 +2078,10 @@
         <!-- 5. Diagnostics -->
         <div class="settings-sec" style="padding-top:8px; border-top:1px solid rgba(var(--ink), 0.06);">
           <div class="sec-heading">Диагностика</div>
+          <button class="btn-outline" id="speedtestBtn" style="width:100%; margin-bottom:8px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 14l4-4"/><path d="M3.3 17a10 10 0 1 1 17.4 0"/></svg>
+            Тест скорости
+          </button>
           <button class="btn-outline" id="leakCheckBtn" style="width:100%; margin-bottom:8px;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
             Проверить утечки и внешний IP
@@ -2143,6 +2158,27 @@
       <div class="sec-heading" style="margin-bottom:6px;">По профилям</div>
       <div id="statsProfiles" style="display:flex; flex-direction:column; gap:6px; max-height:140px; overflow-y:auto;"></div>
       <div class="modal-btns"><button class="modal-btn primary" id="statsClose">Закрыть</button></div>
+    </div>
+  </div>
+
+  <!-- Speed test -->
+  <div class="modal-backdrop" id="speedModal">
+    <div class="glass-modal" style="width:480px;">
+      <h2 style="font-size:18px; font-weight:700; margin-bottom:2px;">Тест скорости</h2>
+      <div id="speedRoute" style="font-size:12px; color:var(--text-dim); margin-bottom:14px;"></div>
+      <div class="speed-grid">
+        <div class="speed-tile"><div class="speed-label">Задержка</div><div class="speed-num" id="spPing">—</div><div class="speed-unit" id="spJitter">мс</div></div>
+        <div class="speed-tile"><div class="speed-label down">Загрузка</div><div class="speed-num" id="spDown">—</div><div class="speed-unit">Мбит/с</div></div>
+        <div class="speed-tile"><div class="speed-label up">Отдача</div><div class="speed-num" id="spUp">—</div><div class="speed-unit">Мбит/с</div></div>
+      </div>
+      <div class="speed-bar"><div id="spBar"></div></div>
+      <div id="spStatus" style="font-size:12.5px; color:var(--text-muted); margin-top:8px; min-height:18px;"></div>
+      <p style="font-size:11px; color:var(--text-dim); line-height:1.45; margin-top:6px;">Замер идёт через Cloudflare (speed.cloudflare.com) и передаёт до 40 МБ данных. Результат зависит от сервера, нагрузки сети и времени суток.</p>
+      <div class="modal-btns">
+        <button class="modal-btn" id="spStop" style="display:none;">Остановить</button>
+        <button class="modal-btn" id="spStart">Запустить</button>
+        <button class="modal-btn primary" id="spClose">Закрыть</button>
+      </div>
     </div>
   </div>
 
@@ -2870,6 +2906,54 @@
       }
     }
 
+    // ---- speed test
+    let speedRunning = false;
+    const PHASES = { ping: ["Измеряю задержку…", 12], download: ["Измеряю скорость загрузки…", 45], upload: ["Измеряю скорость отдачи…", 80], done: ["Готово", 100] };
+    const fmt = (v, d = 1) => (v == null ? "—" : v >= 100 ? Math.round(v).toString() : v.toFixed(d));
+    function renderSpeed(u) {
+      $("spPing").textContent = u.ping == null ? "—" : Math.round(u.ping);
+      $("spJitter").textContent = u.jitter == null ? "мс" : "мс ± " + u.jitter.toFixed(1);
+      $("spDown").textContent = fmt(u.down);
+      $("spUp").textContent = fmt(u.up);
+      const ph = PHASES[u.phase];
+      if (ph) {
+        $("spStatus").textContent = ph[0];
+        $("spBar").style.width = ph[1] + "%";
+      }
+    }
+    window.vlessvpn.onSpeedtest(renderSpeed);
+    async function startSpeedtest() {
+      if (speedRunning) return;
+      speedRunning = true;
+      $("spStart").style.display = "none";
+      $("spStop").style.display = "";
+      renderSpeed({ phase: "ping" });
+      const connected = !!currentState.activeProfileId && !currentState.connecting;
+      $("spPing").textContent = $("spDown").textContent = $("spUp").textContent = "—";
+      $("speedRoute").textContent = connected ? "Через VPN" : "Без VPN: напрямую через ваше интернет-соединение";
+      const r = await window.vlessvpn.runSpeedtest();
+      speedRunning = false;
+      $("spStop").style.display = "none";
+      $("spStart").style.display = "";
+      $("spStart").textContent = "Повторить";
+      if (r.ok) {
+        renderSpeed({ phase: "done", ...r.result });
+        $("speedRoute").textContent = r.connected ? "Через VPN" + (r.profileName ? " · " + r.profileName : "") : "Без VPN: напрямую через ваше интернет-соединение";
+      } else {
+        $("spStatus").textContent = r.error;
+        $("spBar").style.width = "0%";
+      }
+    }
+    $("speedtestBtn").addEventListener("click", () => {
+      $("speedModal").classList.add("open");
+      if (!speedRunning) startSpeedtest();
+    });
+    $("spStart").addEventListener("click", startSpeedtest);
+    $("spStop").addEventListener("click", () => window.vlessvpn.cancelSpeedtest());
+    function closeSpeed() { window.vlessvpn.cancelSpeedtest(); $("speedModal").classList.remove("open"); }
+    $("spClose").addEventListener("click", closeSpeed);
+    $("speedModal").addEventListener("click", (e) => { if (e.target === $("speedModal")) closeSpeed(); });
+
     // ---- leak check
     async function runLeakCheck() {
       const body = $("leakBody");
@@ -3189,6 +3273,8 @@
         $("aboutModal").classList.remove("open");
         $("statsModal").classList.remove("open");
         $("qrModal").classList.remove("open");
+        $("leakModal").classList.remove("open");
+        if ($("speedModal").classList.contains("open")) closeSpeed();
       } else if (e.code === "Space") {
         // Space bar toggles VPN connection if not focused in an input/textarea
         const nothingFocused = !document.activeElement || document.activeElement === document.body;

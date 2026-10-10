@@ -32,6 +32,7 @@ import { qrSvg } from "../src/qr.js";
 import { explainSingBoxLine, createIssueThrottle } from "../src/errorHints.js";
 import { IP_INFO_URL, parseIpInfo, leakVerdict, describeDns } from "../src/leakCheck.js";
 import { refreshRules, pickRulesDir } from "../src/rulesUpdate.js";
+import { runSpeedtest } from "../src/speedtest.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1014,6 +1015,37 @@ ipcMain.handle("check-leaks", async () => {
   const verdict = leakVerdict({ connected, info, serverHost, realIp: knownRealIp });
   if (info && !connected) knownRealIp = info.ip;
   return { connected, info, verdict, dns: describeDns(settings), profileName: active ? active.name : null };
+});
+
+// Speed test through the current route (the tunnel when connected).
+let speedtestAbort = null;
+
+ipcMain.handle("run-speedtest", async () => {
+  if (speedtestAbort) return { ok: false, error: "Тест уже идёт" };
+  const controller = new AbortController();
+  speedtestAbort = controller;
+  const overall = setTimeout(() => controller.abort(), 60000);
+  const active = activeProfileId ? profileStore().load().find((p) => p.id === activeProfileId) : null;
+  const context = { connected: !!active && !connecting, profileName: active ? active.name : null };
+  const fetchFn = (url, init) => net.fetch(url, { ...init, signal: controller.signal, cache: "no-store" });
+  try {
+    const result = await runSpeedtest(fetchFn, {
+      isCancelled: () => controller.signal.aborted,
+      onUpdate: (u) => mainWindow?.webContents.send("speedtest", u),
+    });
+    return { ok: true, result, ...context };
+  } catch (err) {
+    const cancelled = controller.signal.aborted;
+    log("speed test failed:", err.message);
+    return { ok: false, cancelled, error: cancelled ? "Тест остановлен" : "Нет связи с сервером теста. Проверьте подключение." , ...context };
+  } finally {
+    clearTimeout(overall);
+    speedtestAbort = null;
+  }
+});
+
+ipcMain.handle("cancel-speedtest", () => {
+  speedtestAbort?.abort();
 });
 
 ipcMain.handle("get-rules-info", () => {

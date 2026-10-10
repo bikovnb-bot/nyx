@@ -2,7 +2,7 @@
   "appId": "com.nyx.installer",
   "productName": "Nyx Installer",
   "electronVersion": "43.7.9",
-  "artifactName": "Nyx-Installer-${version}.${ext}",
+  "artifactName": "Nyx-Installer.${ext}",
   "directories": {
     "output": "../release-installer"
   },

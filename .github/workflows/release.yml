@@ -77,6 +77,6 @@ jobs:
             release/*.exe
             release/*.exe.blockmap
             release/latest.yml
-            release-installer/Nyx-Installer-*.exe
+            release-installer/Nyx-Installer.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -70,6 +70,18 @@ if (apksigner && existsSync(apksigner)) {
   console.warn("apksigner not found: signature not verified");
 }
 
+// keep the direct APK link in the README table current (the change is left uncommitted)
+function updateReadmeLink() {
+  const readme = path.join(root, "..", "README.md");
+  let text = readFileSync(readme, "utf8");
+  const link = `<!-- android-direct -->[${name}](https://github.com/bikovnb-bot/nyx/releases/download/android-v${version}/${name})<!-- /android-direct -->`;
+  const next = text.replace(/<!-- android-direct -->[\s\S]*?<!-- \/android-direct -->/, link);
+  if (next !== text) {
+    writeFileSync(readme, next);
+    console.log("README: direct Android link updated, remember to commit it");
+  }
+}
+
 if (publish) {
   const tag = `android-v${version}`;
   const notesFile = path.join(outDir, "notes.md");
@@ -86,4 +98,5 @@ if (publish) {
     ].join("\n")
   );
   run("gh", ["release", "create", tag, `"${apk}"`, `"${apk}.sha256"`, "--repo", "bikovnb-bot/nyx", "--latest=false", "--title", `"Nyx для Android ${version}"`, "--notes-file", `"${notesFile}"`]);
+  updateReadmeLink();
 }

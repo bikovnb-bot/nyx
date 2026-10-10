@@ -367,6 +367,7 @@
     $("appCount").textContent = String(list.length);
     $("aboutText").textContent = "Nyx для Android · ядро sing-box · лицензия GPL-3.0. Изменения вступают в силу при следующем подключении.";
     renderSubs();
+    refreshBattery();
   }
 
   function changed(msg) {
@@ -682,6 +683,23 @@
     }, { root: $("appList"), rootMargin: "200px" });
     document.querySelectorAll("#appList img.ico").forEach((img) => iconObserver.observe(img));
   }
+
+  // ------------------------------------------------------------------ background work
+  async function refreshBattery() {
+    try {
+      const r = await vpn.batteryStatus();
+      $("batteryBtn").textContent = r.ignoring ? "Ограничения батареи сняты ✓" : "Снять ограничения батареи";
+      $("batteryBtn").dataset.ok = r.ignoring ? "1" : "";
+    } catch (e) {}
+  }
+  $("batteryBtn").addEventListener("click", async () => {
+    if ($("batteryBtn").dataset.ok) { toast("Уже снято", "success"); return; }
+    try { await vpn.requestBatteryExemption(); } catch (e) { toast("Откройте настройки батареи вручную", "error"); }
+  });
+  $("autostartBtn").addEventListener("click", async () => {
+    try { await vpn.openAutostart(); } catch (e) { toast("Откройте настройки приложения вручную", "error"); }
+  });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshBattery(); });
 
   // ------------------------------------------------------------------ boot
   applyTheme(data.settings.theme);

@@ -94,25 +94,87 @@ public class NyxVpnService extends VpnService implements PlatformInterface, Comm
         connectivity = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
     }
 
+    // The running session is kept on disk so that, if the system kills the app
+    // (for instance "clear all" in the recent apps list on MIUI), the sticky restart
+    // can bring the tunnel back up without the user doing anything.
+    private File sessionFile() {
+        return new File(getFilesDir(), "vpn_session.json");
+    }
+
+    private void saveSession(String config) {
+        try {
+            org.json.JSONObject o = new org.json.JSONObject();
+            o.put("config", config);
+            o.put("name", pendingName);
+            o.put("include", new org.json.JSONArray(pendingInclude == null ? new ArrayList<String>() : pendingInclude));
+            o.put("exclude", new org.json.JSONArray(pendingExclude == null ? new ArrayList<String>() : pendingExclude));
+            java.io.FileOutputStream out = new java.io.FileOutputStream(sessionFile());
+            out.write(o.toString().getBytes("UTF-8"));
+            out.close();
+        } catch (Exception e) {
+            Log.w(TAG, "saveSession", e);
+        }
+    }
+
+    private String loadSession() {
+        try {
+            File f = sessionFile();
+            if (!f.exists()) return null;
+            byte[] buf = new byte[(int) f.length()];
+            java.io.FileInputStream in = new java.io.FileInputStream(f);
+            int off = 0;
+            while (off < buf.length) {
+                int n = in.read(buf, off, buf.length - off);
+                if (n < 0) break;
+                off += n;
+            }
+            in.close();
+            org.json.JSONObject o = new org.json.JSONObject(new String(buf, "UTF-8"));
+            pendingName = o.optString("name", "Nyx");
+            pendingInclude = jsonList(o.optJSONArray("include"));
+            pendingExclude = jsonList(o.optJSONArray("exclude"));
+            return o.getString("config");
+        } catch (Exception e) {
+            Log.w(TAG, "loadSession", e);
+            return null;
+        }
+    }
+
+    private static List<String> jsonList(org.json.JSONArray a) {
+        List<String> out = new ArrayList<>();
+        if (a != null) for (int i = 0; i < a.length(); i++) out.add(a.optString(i));
+        return out;
+    }
+
+    private void clearSession() {
+        //noinspection ResultOfMethodCallIgnored
+        sessionFile().delete();
+    }
+
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent == null ? null : intent.getAction();
         if (ACTION_STOP.equals(action)) {
+            clearSession();
             stopVpn();
             return START_NOT_STICKY;
         }
-        if (!"starting".equals(state) && !"started".equals(state)) {
-            // started by the system without a request (e.g. after a crash): nothing to run
-            if (pendingConfig == null) {
+        String config = pendingConfig;
+        pendingConfig = null;
+        if (config != null) {
+            saveSession(config);
+        } else if (!"starting".equals(state) && !"started".equals(state)) {
+            // restarted by the system after the process was killed: resume the saved session
+            config = loadSession();
+            if (config == null) {
                 stopSelf();
                 return START_NOT_STICKY;
             }
         }
         showNotification("Подключение…");
-        final String config = pendingConfig;
-        pendingConfig = null;
-        if (config != null) new Thread(() -> startVpn(config), "nyx-start").start();
-        return START_NOT_STICKY;
+        final String toStart = config;
+        if (toStart != null) new Thread(() -> startVpn(toStart), "nyx-start").start();
+        return START_STICKY;
     }
 
     // ------------------------------------------------------------------ lifecycle
@@ -152,6 +214,7 @@ public class NyxVpnService extends VpnService implements PlatformInterface, Comm
             showNotification("Подключено");
         } catch (Throwable t) {
             Log.e(TAG, "start failed", t);
+            clearSession(); // do not loop on a configuration that cannot start
             cleanup();
             setState("error", String.valueOf(t.getMessage()));
             stopForegroundCompat();
@@ -208,6 +271,7 @@ public class NyxVpnService extends VpnService implements PlatformInterface, Comm
     @Override
     public void onRevoke() {
         // the user turned the VPN off from the system UI
+        clearSession();
         stopVpn();
     }
 
@@ -584,7 +648,7 @@ public class NyxVpnService extends VpnService implements PlatformInterface, Comm
     @Override public int connectSSHAgent() { return -1; }
     @Override public SystemProxyStatus getSystemProxyStatus() { return null; }
     @Override public void serviceReload() { }
-    @Override public void serviceStop() { stopVpn(); }
+    @Override public void serviceStop() { clearSession(); stopVpn(); }
     @Override public void setSystemProxyEnabled(boolean enabled) { }
     @Override public void triggerNativeCrash() { }
     @Override public void writeDebugMessage(String message) { Log.d("sing-box", String.valueOf(message)); }

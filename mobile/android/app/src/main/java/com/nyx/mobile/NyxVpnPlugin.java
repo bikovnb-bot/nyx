@@ -202,6 +202,57 @@ public class NyxVpnPlugin extends Plugin {
         }
     }
 
+    /** Is the app exempt from battery optimisation (needed to survive in the background)? */
+    @PluginMethod
+    public void batteryStatus(PluginCall call) {
+        android.os.PowerManager pm = (android.os.PowerManager) getContext().getSystemService(android.content.Context.POWER_SERVICE);
+        JSObject res = new JSObject();
+        res.put("ignoring", pm != null && pm.isIgnoringBatteryOptimizations(getContext().getPackageName()));
+        res.put("manufacturer", Build.MANUFACTURER);
+        call.resolve(res);
+    }
+
+    /** Asks the system to stop restricting the app's background work. */
+    @PluginMethod
+    public void requestBatteryExemption(PluginCall call) {
+        try {
+            Intent i = new Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    android.net.Uri.parse("package:" + getContext().getPackageName()));
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(i);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("unavailable");
+        }
+    }
+
+    /** Opens the maker's auto-start screen (Xiaomi and a few others) or the app's system page. */
+    @PluginMethod
+    public void openAutostart(PluginCall call) {
+        String[][] known = {
+                {"com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"},
+                {"com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"},
+                {"com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"},
+        };
+        for (String[] k : known) {
+            try {
+                Intent i = new Intent().setClassName(k[0], k[1]).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(i);
+                call.resolve();
+                return;
+            } catch (Exception ignored) {
+            }
+        }
+        try {
+            Intent i = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    android.net.Uri.parse("package:" + getContext().getPackageName())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(i);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("unavailable");
+        }
+    }
+
     @PluginMethod
     public void stop(PluginCall call) {
         Intent intent = new Intent(getContext(), NyxVpnService.class).setAction(NyxVpnService.ACTION_STOP);

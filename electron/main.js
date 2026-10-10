@@ -1,4 +1,4 @@
-import { app, Tray, Menu, nativeImage, BrowserWindow, ipcMain, Notification, shell, dialog, clipboard, net, screen } from "electron";
+import { app, Tray, Menu, nativeImage, nativeTheme, BrowserWindow, ipcMain, Notification, shell, dialog, clipboard, net, screen } from "electron";
 // electron-updater is CJS and only exposes autoUpdater via a lazy getter on
 // its default export — `import { autoUpdater }` fails to resolve under
 // Node's ESM/CJS interop and crashes the whole process before any code runs.
@@ -29,6 +29,9 @@ import { parseSubscription, planSubscriptionSync, linkKey } from "../src/subscri
 import { createSubscriptionStore } from "../src/subscriptionStore.js";
 import { pickBest, buildReconnectPlan, sortWithFavorites } from "../src/selection.js";
 import { qrSvg } from "../src/qr.js";
+import { explainSingBoxLine, createIssueThrottle } from "../src/errorHints.js";
+import { IP_INFO_URL, parseIpInfo, leakVerdict, describeDns } from "../src/leakCheck.js";
+import { refreshRules, pickRulesDir } from "../src/rulesUpdate.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -127,6 +130,13 @@ let mainWindow = null;
 let child = null;
 let activeProfileId = null;
 let connecting = false;
+// The latest explained problem with the proxy connection, shown as a banner.
+let connectionIssue = null;
+let connectStartedAt = 0;
+const issueThrottle = createIssueThrottle();
+const issueTimes = new Map();
+// The IP seen while the VPN was off, for the leak check to compare against.
+let knownRealIp = null;
 let connectedAt = null;
 let trafficReq = null;
 let trafficHistory = [];
@@ -208,6 +218,7 @@ function startTrafficPolling(profileId, attempt = 0) {
 let connectToken = 0;
 
 function disconnect() {
+  connectionIssue = null;
   connectToken++;
   userInitiatedDisconnect = true;
   if (child) {
@@ -234,9 +245,32 @@ function markConnected(profile) {
   broadcastState();
 }
 
+// A proxy error is shown right away while connecting (and for start-up
+// failures); later on it takes a few repeats, so one failed site does not look
+// like a broken VPN.
+function shouldSurfaceIssue(issue) {
+  if (/fatal/i.test(issue.raw)) return true;
+  const now = Date.now();
+  if (now - connectStartedAt < 15000) return true;
+  const recent = (issueTimes.get(issue.kind) || []).filter((t) => now - t < 20000);
+  recent.push(now);
+  issueTimes.set(issue.kind, recent);
+  return recent.length >= 3;
+}
+
+function handleSingBoxLine(line) {
+  const issue = explainSingBoxLine(line);
+  if (!issue || !shouldSurfaceIssue(issue) || !issueThrottle(issue.kind)) return;
+  connectionIssue = { kind: issue.kind, title: issue.title, hint: issue.hint, at: Date.now() };
+  notify(issue.title, issue.hint);
+  broadcastState();
+}
+
 function connect(profile) {
   disconnect();
   userInitiatedDisconnect = false;
+  connectStartedAt = Date.now();
+  issueTimes.clear();
 
   // Show "connecting" right away: the integrity hash and interface lookup below
   // block this process for a moment.
@@ -284,7 +318,7 @@ function connect(profile) {
     routing: settings.routing,
     dns: settings.dns,
     fragment: settings.fragment.enabled,
-    rulesDir: findRulesDir(),
+    rulesDir: pickRulesDir(userDataDir(), findRulesDir()),
   });
   const dir = mkdtempSync(path.join(tmpdir(), "vlessvpn-"));
   const configPath = path.join(dir, "config.json");
@@ -302,9 +336,7 @@ function connect(profile) {
     onLog: (line) => {
       log("[sing-box]", line.trim());
       if (/sing-box started/i.test(line)) markConnected(profile);
-      if (/FATAL/i.test(line)) {
-        notify("Ошибка подключения", line.trim().slice(0, 200));
-      }
+      handleSingBoxLine(line);
     },
     onError: (err) => {
       log("sing-box spawn error:", err.stack || err.message);
@@ -637,6 +669,7 @@ function getState() {
     autoStart: isAutoStartEnabled(),
     settings,
     killSwitchActive,
+    issue: connectionIssue,
     subscriptions: publicSubscriptions(),
   };
 }
@@ -680,6 +713,13 @@ function openSettingsWindow() {
   else send();
 }
 
+// The colour behind the page while it loads, so a light theme does not flash dark.
+function windowBackground() {
+  const mode = settingsStore().load().theme;
+  const light = mode === "light" || (mode === "system" && !nativeTheme.shouldUseDarkColors);
+  return light ? "#eef2f7" : "#0b0e14";
+}
+
 function openMainWindow() {
   if (mainWindow) {
     mainWindow.show();
@@ -694,7 +734,7 @@ function openMainWindow() {
     minWidth: 960,
     minHeight: 600,
     frame: false,
-    backgroundColor: "#0b0e14",
+    backgroundColor: windowBackground(),
     title: "Nyx",
     icon: APP_ICON,
     autoHideMenuBar: true,
@@ -940,6 +980,74 @@ ipcMain.handle("get-app-info", async () => ({
 // Real round-trip through the tunnel (Clash API asks the "proxy" outbound to
 // fetch a tiny URL), unlike a TCP ping to the server's own IP, which from
 // this process would itself be routed into the tunnel.
+ipcMain.handle("dismiss-issue", () => {
+  connectionIssue = null;
+  broadcastState();
+});
+
+// "Is the VPN really in use?": ask an IP-geolocation service how this machine
+// looks from the outside. The request is made by this app, so it travels the
+// same way as any other program's traffic.
+ipcMain.handle("check-leaks", async () => {
+  const settings = settingsStore().load();
+  const active = activeProfileId ? profileStore().load().find((p) => p.id === activeProfileId) : null;
+  const connected = !!active && !connecting;
+  let info = null;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    try {
+      const res = await net.fetch(IP_INFO_URL, { signal: controller.signal, headers: { "User-Agent": `Nyx/${app.getVersion()}` } });
+      if (res.ok) info = parseIpInfo(await res.json());
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch (err) {
+    log("leak check failed:", err.message);
+  }
+  let serverHost = null;
+  if (active) {
+    try {
+      serverHost = parseVlessLink(active.link).host;
+    } catch {}
+  }
+  const verdict = leakVerdict({ connected, info, serverHost, realIp: knownRealIp });
+  if (info && !connected) knownRealIp = info.ip;
+  return { connected, info, verdict, dns: describeDns(settings), profileName: active ? active.name : null };
+});
+
+ipcMain.handle("get-rules-info", () => {
+  const settings = settingsStore().load();
+  const custom = pickRulesDir(userDataDir(), null);
+  return { custom: !!custom, updatedAt: settings.rulesUpdatedAt };
+});
+
+ipcMain.handle("update-rules", async () => {
+  async function fetchBuffer(url) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30000);
+    try {
+      const res = await net.fetch(url, { signal: controller.signal, headers: { "User-Agent": `Nyx/${app.getVersion()}` } });
+      if (!res.ok) throw new Error(`Сервер ответил ${res.status}`);
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length > 8 * 1024 * 1024) throw new Error("Файл слишком большой");
+      return buf;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  try {
+    const result = await refreshRules(userDataDir(), fetchBuffer);
+    const updatedAt = Date.now();
+    settingsStore().update({ rulesUpdatedAt: updatedAt });
+    log("routing lists refreshed:", result.files.join(", "), result.bytes, "bytes");
+    return { ok: true, updatedAt, applied: !activeProfileId };
+  } catch (err) {
+    log("routing lists refresh failed:", err.message);
+    return { ok: false, error: err.name === "AbortError" ? "нет ответа от GitHub" : err.message };
+  }
+});
+
 ipcMain.handle("get-tunnel-latency", () => {
   return new Promise((resolve) => {
     if (!activeProfileId) return resolve(null);

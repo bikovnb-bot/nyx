@@ -3,13 +3,27 @@
 <head>
 <meta charset="utf-8" />
 <title>Nyx</title>
+<script>
+  (function () {
+    try {
+      var m = localStorage.getItem("nyxTheme") || "dark";
+      var light = m === "light" || (m === "system" && window.matchMedia("(prefers-color-scheme: light)").matches);
+      document.documentElement.setAttribute("data-theme", light ? "light" : "dark");
+    } catch (e) { document.documentElement.setAttribute("data-theme", "dark"); }
+  })();
+</script>
 <style>
   :root {
     color-scheme: dark;
+    --ink: 255, 255, 255;          /* overlay colour: white on dark, dark ink on light */
+    --bg-rgb: 11, 14, 20;
+    --card-rgb: 22, 27, 34;
+    --card-hover-rgb: 30, 36, 46;
+    --text-strong: #F8FAFC;
     --bg: #0B0E14;
-    --card-bg: rgba(22, 27, 34, 0.45);
-    --card-hover: rgba(30, 36, 46, 0.65);
-    --card-border: rgba(255, 255, 255, 0.08);
+    --card-bg: rgba(var(--card-rgb), 0.45);
+    --card-hover: rgba(var(--card-hover-rgb), 0.65);
+    --card-border: rgba(var(--ink), 0.08);
     --card-border-hover: rgba(139, 92, 246, 0.4);
     --card-border-active: rgba(16, 185, 129, 0.45);
 
@@ -66,12 +80,12 @@
     width: 100vw;
     height: 100vh;
     border-radius: 16px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(var(--ink), 0.1);
     background: var(--bg);
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(var(--ink), 0.08);
   }
 
   /* Dynamic ambient glows */
@@ -118,7 +132,7 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.14);
+    background: rgba(var(--ink), 0.14);
     border-radius: 999px;
   }
   ::-webkit-scrollbar-thumb:hover {
@@ -150,8 +164,8 @@
     padding: 0 14px 0 18px;
     display: flex;
     align-items: center;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    background: rgba(11, 14, 20, 0.55);
+    border-bottom: 1px solid rgba(var(--ink), 0.05);
+    background: rgba(var(--bg-rgb), 0.55);
     backdrop-filter: blur(20px);
     -webkit-app-region: drag;
   }
@@ -176,7 +190,7 @@
     font-size: 15px;
     font-weight: 700;
     letter-spacing: 0.6px;
-    color: #F8FAFC;
+    color: var(--text-strong);
   }
 
   .status-pill {
@@ -186,8 +200,8 @@
     gap: 7px;
     padding: 4px 11px;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(var(--ink), 0.04);
+    border: 1px solid rgba(var(--ink), 0.06);
     font-size: 12px;
     font-weight: 500;
     color: var(--text-muted);
@@ -284,7 +298,7 @@
   }
   .tb-btn:hover {
     color: var(--text);
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(var(--ink), 0.08);
   }
   .tb-btn.active {
     color: var(--accent-purple);
@@ -298,7 +312,7 @@
   .tb-divider {
     width: 1px;
     height: 16px;
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(var(--ink), 0.08);
     margin: 0 4px;
   }
 
@@ -326,7 +340,7 @@
     position: relative;
   }
   .glass-card:hover {
-    border-color: rgba(255, 255, 255, 0.14);
+    border-color: rgba(var(--ink), 0.14);
   }
 
   /* =========================================================
@@ -398,7 +412,7 @@
     align-items: center;
     justify-content: space-between;
     padding-top: 4px;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    border-top: 1px solid rgba(var(--ink), 0.05);
   }
   .mini-badge {
     font-size: 11.5px;
@@ -424,7 +438,7 @@
     border-radius: 8px;
     background: rgba(0, 0, 0, 0.22);
     overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(var(--ink), 0.04);
   }
   .chart-box svg {
     width: 100%;
@@ -483,7 +497,7 @@
   .search-input:focus {
     border-color: var(--accent-purple);
     box-shadow: 0 0 14px rgba(139, 92, 246, 0.2);
-    background: rgba(22, 27, 34, 0.7);
+    background: rgba(var(--card-rgb), 0.7);
   }
 
   /* [+] Add Profile Button in Natural Location */
@@ -514,7 +528,7 @@
   .btn-add-profile-inline:hover {
     background: var(--card-hover);
     border-color: rgba(139, 92, 246, 0.4);
-    color: #fff;
+    color: var(--text-strong);
     box-shadow: 0 0 12px rgba(139, 92, 246, 0.15);
     transform: translateY(-1px);
   }
@@ -556,7 +570,7 @@
   }
   .profile-card.active {
     border-color: var(--accent-emerald);
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(22, 27, 34, 0.7) 100%);
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(var(--card-rgb), 0.7) 100%);
     box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.25), 0 8px 24px rgba(16, 185, 129, 0.1);
   }
 
@@ -579,13 +593,13 @@
     width: 24px;
     height: 24px;
     border-radius: 6px;
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(var(--ink), 0.05);
   }
 
   .profile-title {
     font-size: 13px;
     font-weight: 600;
-    color: #F8FAFC;
+    color: var(--text-strong);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -620,8 +634,8 @@
     transform: rotate(180deg);
   }
   .profile-expand-toggle:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-strong);
+    background: rgba(var(--ink), 0.1);
   }
 
   /* Collapsible Details Body */
@@ -631,7 +645,7 @@
     gap: 8px;
     padding-top: 8px;
     margin-top: 6px;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    border-top: 1px solid rgba(var(--ink), 0.05);
     animation: accordion-slide 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   }
   .profile-card.expanded .profile-details-body {
@@ -669,7 +683,7 @@
     font-weight: 700;
     padding: 2px 6px;
     border-radius: 5px;
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(var(--ink), 0.06);
     color: var(--text-muted);
     letter-spacing: 0.3px;
   }
@@ -699,19 +713,19 @@
     font-size: 11px;
     font-weight: 600;
     cursor: pointer;
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(var(--ink), 0.04);
     color: var(--text-dim);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(var(--ink), 0.06);
     transition: all 0.2s ease;
     white-space: nowrap;
   }
   .country-pill:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(var(--ink), 0.08);
     color: var(--text);
   }
   .country-pill.active {
     background: rgba(139, 92, 246, 0.22);
-    color: #fff;
+    color: var(--text-strong);
     border-color: rgba(139, 92, 246, 0.45);
     box-shadow: 0 0 10px rgba(139, 92, 246, 0.2);
   }
@@ -741,7 +755,7 @@
   }
   .micro-act-btn:hover {
     color: var(--text);
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(var(--ink), 0.1);
   }
   .micro-act-btn.del:hover {
     color: var(--danger);
@@ -775,8 +789,8 @@
     right: 0;
     padding: 6px 14px;
     border-radius: 10px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(var(--ink), 0.05);
+    border: 1px solid rgba(var(--ink), 0.08);
     color: var(--text-muted);
     font-size: 12.5px;
     display: flex;
@@ -786,8 +800,8 @@
     transition: all 0.2s ease;
   }
   .hero-settings-trigger:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #fff;
+    background: rgba(var(--ink), 0.1);
+    color: var(--text-strong);
     border-color: rgba(139, 92, 246, 0.4);
   }
   .hero-settings-trigger svg {
@@ -858,8 +872,8 @@
     height: 168px;
     border-radius: 50%;
     background: radial-gradient(circle at 40% 30%, #1E2330 0%, #0F131A 85%);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7), inset 0 1px 1px rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(var(--ink), 0.12);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7), inset 0 1px 1px rgba(var(--ink), 0.15);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -870,7 +884,7 @@
   }
   .power-btn:hover:not(:disabled) {
     transform: scale(1.04);
-    border-color: rgba(255, 255, 255, 0.25);
+    border-color: rgba(var(--ink), 0.25);
     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 24px var(--ring-glow);
   }
   .power-btn:active:not(:disabled) {
@@ -950,8 +964,8 @@
     width: 18px;
     height: 18px;
     border-radius: 6px;
-    border: 1.5px solid rgba(255, 255, 255, 0.2);
-    background: rgba(22, 27, 34, 0.5);
+    border: 1.5px solid rgba(var(--ink), 0.2);
+    background: rgba(var(--card-rgb), 0.5);
     display: grid;
     place-items: center;
     cursor: pointer;
@@ -996,7 +1010,7 @@
     bottom: 34px;
     width: 380px;
     background: rgba(14, 18, 27, 0.95);
-    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    border-left: 1px solid rgba(var(--ink), 0.1);
     box-shadow: -12px 0 40px rgba(0, 0, 0, 0.7);
     backdrop-filter: blur(25px);
     transform: translateX(100%);
@@ -1011,7 +1025,7 @@
 
   .drawer-head {
     padding: 16px 18px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid rgba(var(--ink), 0.08);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1019,7 +1033,7 @@
   .drawer-title {
     font-size: 15px;
     font-weight: 700;
-    color: #F8FAFC;
+    color: var(--text-strong);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -1039,8 +1053,8 @@
     transition: all 0.2s ease;
   }
   .drawer-close:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #fff;
+    background: rgba(var(--ink), 0.1);
+    color: var(--text-strong);
   }
 
   .drawer-scroll {
@@ -1089,7 +1103,7 @@
     inset: 0;
     margin: 0;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(var(--ink), 0.12);
     cursor: pointer;
     transition: background 0.2s ease;
   }
@@ -1127,8 +1141,8 @@
     gap: 7px;
     padding: 5px 8px;
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(var(--ink), 0.04);
+    border: 1px solid rgba(var(--ink), 0.06);
     font-size: 12px;
     color: var(--text);
   }
@@ -1189,7 +1203,7 @@
     height: 32px;
     border-radius: 8px;
     border: 1px solid var(--card-border);
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(var(--ink), 0.06);
     display: grid;
     place-items: center;
     color: var(--text-muted);
@@ -1197,7 +1211,7 @@
     transition: all 0.2s ease;
   }
   .quick-add-btn:hover {
-    color: #fff;
+    color: var(--text-strong);
     background: var(--accent-purple);
     border-color: var(--accent-purple);
   }
@@ -1212,8 +1226,8 @@
     height: 34px;
     padding: 0 10px;
     border-radius: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(var(--ink), 0.08);
+    background: rgba(var(--ink), 0.03);
     color: var(--text-muted);
     font-size: 12px;
     font-weight: 500;
@@ -1231,7 +1245,7 @@
   .btn-outline:hover {
     border-color: var(--accent-purple);
     background: rgba(139, 92, 246, 0.1);
-    color: #F8FAFC;
+    color: var(--text-strong);
     transform: translateY(-1px);
   }
   .btn-outline:hover svg {
@@ -1244,7 +1258,7 @@
     word-break: break-all;
     font: 10px/1.4 Consolas, "Cascadia Code", monospace;
     background: rgba(0, 0, 0, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(var(--ink), 0.08);
     border-radius: 8px;
     padding: 8px;
     max-height: 130px;
@@ -1269,8 +1283,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
-    background: rgba(11, 14, 20, 0.4);
+    border-top: 1px solid rgba(var(--ink), 0.05);
+    background: rgba(var(--bg-rgb), 0.4);
     font-size: 12px;
   }
 
@@ -1315,10 +1329,10 @@
     width: 420px;
     max-width: calc(100vw - 32px);
     background: rgba(14, 18, 26, 0.88);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(var(--ink), 0.12);
     border-radius: 18px;
     padding: 24px;
-    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.85), 0 0 40px rgba(139, 92, 246, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.85), 0 0 40px rgba(139, 92, 246, 0.12), inset 0 1px 0 rgba(var(--ink), 0.1);
     backdrop-filter: blur(30px);
     animation: modal-enter 0.22s cubic-bezier(0.16, 1, 0.3, 1);
     position: relative;
@@ -1354,7 +1368,7 @@
   .modal-title {
     font-size: 17px;
     font-weight: 700;
-    color: #F8FAFC;
+    color: var(--text-strong);
     margin-bottom: 16px;
     letter-spacing: -0.2px;
   }
@@ -1375,8 +1389,8 @@
     height: 40px;
     padding: 0 14px;
     border-radius: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(11, 14, 20, 0.65);
+    border: 1px solid rgba(var(--ink), 0.08);
+    background: rgba(var(--bg-rgb), 0.65);
     color: var(--text);
     font-size: 13px;
     outline: none;
@@ -1386,7 +1400,7 @@
   .modal-input:focus {
     border-color: var(--accent-purple);
     box-shadow: 0 0 16px rgba(139, 92, 246, 0.25);
-    background: rgba(11, 14, 20, 0.9);
+    background: rgba(var(--bg-rgb), 0.9);
   }
 
   .modal-btns {
@@ -1405,16 +1419,16 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(var(--ink), 0.08);
+    background: rgba(var(--ink), 0.05);
     color: var(--text-muted);
     cursor: pointer;
     transition: all 0.2s ease;
   }
   .modal-btn:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.16);
+    color: var(--text-strong);
+    background: rgba(var(--ink), 0.1);
+    border-color: rgba(var(--ink), 0.16);
   }
   .modal-btn.primary {
     background: linear-gradient(135deg, rgba(139, 92, 246, 0.9) 0%, rgba(99, 102, 241, 0.9) 100%);
@@ -1444,7 +1458,7 @@
     border-radius: 18px;
     background: url("assets/app-icon-128.png") no-repeat center / cover;
     box-shadow: 0 0 30px rgba(139, 92, 246, 0.55), 0 0 10px rgba(16, 185, 129, 0.35);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(var(--ink), 0.15);
   }
   .about-ver {
     font-size: 12px;
@@ -1454,8 +1468,8 @@
   .about-details {
     text-align: left;
     border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(11, 14, 20, 0.6);
+    border: 1px solid rgba(var(--ink), 0.08);
+    background: rgba(var(--bg-rgb), 0.6);
     padding: 8px 14px;
     margin-bottom: 14px;
   }
@@ -1464,7 +1478,7 @@
     justify-content: space-between;
     padding: 7px 0;
     font-size: 12px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    border-bottom: 1px solid rgba(var(--ink), 0.04);
   }
   .about-row:last-child {
     border-bottom: none;
@@ -1492,7 +1506,7 @@
   }
   .toast {
     background: rgba(26, 31, 44, 0.95);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(var(--ink), 0.12);
     padding: 8px 16px;
     border-radius: 10px;
     font-size: 12.5px;
@@ -1515,7 +1529,7 @@
     color: #FCA5A5;
   }
   .micro-act-btn.del.confirm { background: var(--danger); color: #fff; }
-  .flag-img { width: 20px; height: 15px; border-radius: 3px; object-fit: cover; display: block; box-shadow: 0 0 0 1px rgba(255,255,255,.18); }
+  .flag-img { width: 20px; height: 15px; border-radius: 3px; object-fit: cover; display: block; box-shadow: 0 0 0 1px rgba(var(--ink), .18); }
   .flag-globe { width: 18px; height: 18px; color: var(--text-dim); display: block; }
   .profile-card .profile-flag { opacity: 0.95; }
   .country-pill { display: inline-flex; align-items: center; gap: 6px; }
@@ -1527,7 +1541,7 @@
   .fav-btn.on { color: #fbbf24; }
   .fav-btn.on svg { fill: currentColor; }
   .chip-del.confirm { background: var(--danger); color: #fff; }
-  .stats-period.active { background: rgba(139, 92, 246, 0.25); border-color: rgba(139, 92, 246, 0.4); color: #fff; }
+  .stats-period.active { background: rgba(139, 92, 246, 0.25); border-color: rgba(139, 92, 246, 0.4); color: var(--text-strong); }
   #qrBox svg { width: 100%; height: 100%; display: block; }
   select.quick-add-input { height: 32px; }
   /* ---- connecting: the whole button pulses ---- */
@@ -1561,22 +1575,92 @@
   .dd-value {
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
     padding: 9px 12px; border-radius: 10px; font-size: 13px; cursor: pointer;
-    background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(var(--ink), 0.04); border: 1px solid rgba(var(--ink), 0.1);
     color: var(--text); transition: border-color 0.15s, background 0.15s;
   }
   .dd-value span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dd-value svg { flex: none; color: var(--text-muted); transition: transform 0.2s; }
-  .dd:hover .dd-value, .dd:focus-visible .dd-value, .dd.open .dd-value { border-color: var(--accent-purple); background: rgba(255, 255, 255, 0.06); }
+  .dd:hover .dd-value, .dd:focus-visible .dd-value, .dd.open .dd-value { border-color: var(--accent-purple); background: rgba(var(--ink), 0.06); }
   .dd.open .dd-value svg { transform: rotate(180deg); }
   .dd-list {
     display: none; position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 30;
     max-height: 190px; overflow-y: auto; padding: 4px; border-radius: 10px;
-    background: #141923; border: 1px solid rgba(255, 255, 255, 0.12); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
+    background: #141923; border: 1px solid rgba(var(--ink), 0.12); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
   }
   .dd.open .dd-list { display: block; }
   .dd-item { padding: 8px 10px; border-radius: 7px; font-size: 13px; color: var(--text-muted); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dd-item:hover { background: rgba(139, 92, 246, 0.16); color: var(--text); }
   .dd-item.selected { color: var(--accent-emerald); background: rgba(16, 185, 129, 0.1); }
+
+  /* =========================================================
+     LIGHT THEME: same layout, light surfaces and dark ink
+     ========================================================= */
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --ink: 15, 23, 42;
+    --bg-rgb: 238, 242, 247;
+    --card-rgb: 255, 255, 255;
+    --card-hover-rgb: 248, 250, 252;
+    --text-strong: #020617;
+    --bg: #EEF2F7;
+    --card-bg: rgba(255, 255, 255, 0.78);
+    --card-hover: rgba(255, 255, 255, 0.97);
+    --card-border: rgba(15, 23, 42, 0.1);
+    --text: #0F172A;
+    --text-muted: #475569;
+    --text-dim: #64748B;
+    --accent-emerald: #059669;
+    --accent-emerald-glow: rgba(5, 150, 105, 0.3);
+    --accent-purple: #7C3AED;
+    --accent-purple-glow: rgba(124, 58, 237, 0.25);
+    --warn: #B45309;
+    --danger: #DC2626;
+    --cyan: #0891B2;
+  }
+  :root[data-theme="light"] .window-shell { box-shadow: 0 25px 60px rgba(15, 23, 42, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.9); }
+  :root[data-theme="light"] .power-btn { background: radial-gradient(circle at 40% 30%, #FFFFFF 0%, #E2E8F0 90%); box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18), inset 0 1px 1px rgba(255, 255, 255, 0.9); }
+  :root[data-theme="light"] .power-btn:hover:not(:disabled) { box-shadow: 0 20px 50px rgba(15, 23, 42, 0.22), 0 0 24px var(--ring-glow); }
+  :root[data-theme="light"] .glass-modal { box-shadow: 0 30px 80px rgba(15, 23, 42, 0.3), 0 0 40px rgba(124, 58, 237, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.9); }
+  :root[data-theme="light"] .dd-list { background: #FFFFFF; box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18); }
+  :root[data-theme="light"] .dd-item.selected { background: rgba(5, 150, 105, 0.1); }
+  :root[data-theme="light"] .tag, :root[data-theme="light"] .status-pill { color: var(--text); }
+  :root[data-theme="light"] #toasts .toast { box-shadow: 0 8px 25px rgba(15, 23, 42, 0.2); }
+
+  :root[data-theme="light"] .chart-box { background: rgba(15, 23, 42, 0.05); }
+  :root[data-theme="light"] .quick-add-input { background: rgba(15, 23, 42, 0.04); }
+  :root[data-theme="light"] .quick-add-input:focus { background: #fff; }
+  :root[data-theme="light"] .log-tail-box { background: rgba(15, 23, 42, 0.06); color: var(--text); }
+
+  :root[data-theme="light"] .drawer-panel { background: rgba(250, 252, 255, 0.97); box-shadow: -12px 0 40px rgba(15, 23, 42, 0.18); }
+  :root[data-theme="light"] .drawer-backdrop { background: rgba(15, 23, 42, 0.25); }
+  :root[data-theme="light"] .glass-modal { background: rgba(255, 255, 255, 0.96); }
+  :root[data-theme="light"] .modal-backdrop { background: rgba(15, 23, 42, 0.35); }
+
+  /* theme switch (segmented) */
+  .seg { display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: rgba(var(--ink), 0.05); border: 1px solid rgba(var(--ink), 0.08); margin-top: 8px; }
+  .seg button { flex: 1; border: 0; border-radius: 7px; padding: 7px 0; font: inherit; font-size: 12px; font-weight: 600; color: var(--text-muted); background: transparent; cursor: pointer; transition: all .15s; }
+  .seg button:hover { color: var(--text-strong); }
+  .seg button.active { background: rgba(139, 92, 246, 0.25); color: var(--text-strong); box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.4); }
+
+  /* explained connection problem */
+  .issue-banner { display: none; align-items: flex-start; gap: 10px; max-width: 420px; margin-top: 10px; padding: 10px 12px; border-radius: 12px;
+    background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.35); font-size: 12px; line-height: 1.45; }
+  .issue-banner.show { display: flex; }
+  .issue-banner b { display: block; font-size: 13px; color: var(--text-strong); margin-bottom: 2px; }
+  .issue-banner span { color: var(--text-muted); }
+  .issue-banner button { flex: none; border: 0; background: transparent; color: var(--text-dim); font-size: 16px; line-height: 1; cursor: pointer; padding: 0 2px; }
+  .issue-banner button:hover { color: var(--text-strong); }
+
+  /* leak check window */
+  .leak-row { display: flex; justify-content: space-between; gap: 14px; padding: 7px 0; border-bottom: 1px solid rgba(var(--ink), 0.06); font-size: 13px; }
+  .leak-row span:first-child { color: var(--text-dim); flex: none; }
+  .leak-row span:last-child { text-align: right; min-width: 0; overflow-wrap: anywhere; user-select: text; }
+  .leak-verdict { margin-top: 12px; padding: 10px 12px; border-radius: 10px; font-size: 12.5px; line-height: 1.5; border: 1px solid rgba(var(--ink), 0.1); }
+  .leak-verdict.ok { background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.4); }
+  .leak-verdict.warn { background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.4); }
+  .leak-verdict.error { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.4); }
+  .leak-verdict.info { background: rgba(99, 102, 241, 0.1); border-color: rgba(99, 102, 241, 0.35); }
+  .leak-dns { margin-top: 10px; font-size: 11.5px; color: var(--text-dim); line-height: 1.45; }
 </style>
 </head>
 <body data-state="disconnected">
@@ -1745,8 +1829,13 @@
           <div class="status-subtitle" id="statusSubtitle">Выберите профиль для подключения</div>
         </div>
 
+        <div class="issue-banner" id="issueBanner">
+          <div><b id="issueTitle"></b><span id="issueHint"></span></div>
+          <button id="issueClose" title="Скрыть">&times;</button>
+        </div>
+
         <!-- IP Address badge with quick copy -->
-        <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/5 text-xs text-slate-300 cursor-pointer hover:border-purple-500/40 transition-colors" id="heroIpBadge" title="Нажмите, чтобы скопировать IP адрес" style="display:flex; align-items:center; gap:6px; padding:4px 12px; border-radius:999px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.06); font-size:12px; color:var(--text-muted); cursor:pointer;">
+        <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/5 text-xs text-slate-300 cursor-pointer hover:border-purple-500/40 transition-colors" id="heroIpBadge" title="Нажмите, чтобы скопировать IP адрес" style="display:flex; align-items:center; gap:6px; padding:4px 12px; border-radius:999px; background:rgba(var(--ink), 0.04); border:1px solid rgba(var(--ink), 0.06); font-size:12px; color:var(--text-muted); cursor:pointer;">
           <span id="heroFlag" style="display:flex; align-items:center;"></span>
           <span id="heroNameText" style="color:var(--text); font-size:13px; font-weight:600; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
           <span style="color:var(--text-dim);">·</span>
@@ -1783,8 +1872,18 @@
       </div>
 
       <div class="drawer-scroll">
+        <!-- appearance -->
+        <div class="settings-sec" style="padding-bottom:10px; border-bottom:1px solid rgba(var(--ink), 0.06);">
+          <div class="sec-heading"><span>Оформление</span></div>
+          <div class="seg" id="themeSeg">
+            <button data-theme-mode="dark">Тёмная</button>
+            <button data-theme-mode="light">Светлая</button>
+            <button data-theme-mode="system">Как в Windows</button>
+          </div>
+        </div>
+
         <!-- 0. Windows Startup Option -->
-        <div class="settings-sec" style="padding-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.06);">
+        <div class="settings-sec" style="padding-bottom:10px; border-bottom:1px solid rgba(var(--ink), 0.06);">
           <div class="switch-row">
             <div>
               <div style="font-weight:500;">Запускать при старте Windows</div>
@@ -1797,7 +1896,7 @@
         </div>
 
         <!-- 0b. Connection behaviour -->
-        <div class="settings-sec" style="padding-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.06);">
+        <div class="settings-sec" style="padding-bottom:10px; border-bottom:1px solid rgba(var(--ink), 0.06);">
           <div class="sec-heading"><span>Подключение</span></div>
           <div class="switch-row">
             <div>
@@ -1824,7 +1923,7 @@
         </div>
 
         <!-- 0c. Routing, DNS, censorship circumvention -->
-        <div class="settings-sec" style="padding-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.06);">
+        <div class="settings-sec" style="padding-bottom:10px; border-bottom:1px solid rgba(var(--ink), 0.06);">
           <div class="sec-heading"><span>Маршрутизация и DNS</span></div>
           <div class="switch-row" style="margin-top:6px;">
             <div>
@@ -1839,6 +1938,13 @@
               <div style="font-size:11px; color:var(--text-dim);">Блокируются рекламные домены (не вся реклама)</div>
             </div>
             <label class="switch"><input type="checkbox" id="blockAdsToggle" /></label>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:8px;">
+            <div style="min-width:0;">
+              <div style="font-size:12px; color:var(--text-muted);">Списки сайтов РФ и рекламы</div>
+              <div style="font-size:11px; color:var(--text-dim);" id="rulesInfo">встроены в приложение</div>
+            </div>
+            <button class="btn-outline" id="rulesUpdateBtn" style="flex:none; width:auto; padding:6px 12px;">Обновить</button>
           </div>
           <div style="display:flex; flex-direction:column; gap:4px; margin-top:8px;">
             <span style="font-size:11px; color:var(--text-dim);">DNS-сервер (DNS-over-HTTPS, через туннель)</span>
@@ -1868,8 +1974,8 @@
           <p style="font-size:11.5px; color:var(--text-dim); line-height:1.3;">Трафик перечисленных процессов и доменов идет напрямую, мимо VPN-туннеля.</p>
 
           <!-- Sub-tabs: Processes vs Domains -->
-          <div style="display:flex; gap:6px; background:rgba(0,0,0,0.3); padding:3px; border-radius:8px; border:1px solid rgba(255,255,255,0.05); margin-top:4px;">
-            <button type="button" id="tabProcsBtn" style="flex:1; padding:5px 0; border-radius:6px; font-size:11.5px; font-weight:600; color:#fff; background:rgba(139,92,246,0.25); border:1px solid rgba(139,92,246,0.4);">Процессы (<span id="procCountBadge">0</span>)</button>
+          <div style="display:flex; gap:6px; background:rgba(var(--ink),0.05); padding:3px; border-radius:8px; border:1px solid rgba(var(--ink), 0.05); margin-top:4px;">
+            <button type="button" id="tabProcsBtn" style="flex:1; padding:5px 0; border-radius:6px; font-size:11.5px; font-weight:600; color:var(--text-strong); background:rgba(139,92,246,0.25); border:1px solid rgba(139,92,246,0.4);">Процессы (<span id="procCountBadge">0</span>)</button>
             <button type="button" id="tabDomainsBtn" style="flex:1; padding:5px 0; border-radius:6px; font-size:11.5px; font-weight:600; color:var(--text-dim); background:transparent; border:1px solid transparent;">Домены (<span id="domCountBadge">0</span>)</button>
           </div>
 
@@ -1893,7 +1999,7 @@
         </div>
 
         <!-- 2. Kill Switch -->
-        <div class="settings-sec" style="padding-top:8px; border-top:1px solid rgba(255,255,255,0.06);">
+        <div class="settings-sec" style="padding-top:8px; border-top:1px solid rgba(var(--ink), 0.06);">
           <div class="switch-row">
             <div>
               <div style="font-weight:500;">Kill switch</div>
@@ -1906,7 +2012,7 @@
         </div>
 
         <!-- 2b. Subscriptions -->
-        <div class="settings-sec" style="padding-top:8px; border-top:1px solid rgba(255,255,255,0.06);">
+        <div class="settings-sec" style="padding-top:8px; border-top:1px solid rgba(var(--ink), 0.06);">
           <div class="sec-heading">
             <span>Подписки</span>
             <button class="btn-outline" id="refreshAllSubsBtn" style="height:24px; padding:0 8px; font-size:11px;">Обновить все</button>
@@ -1924,7 +2030,7 @@
         </div>
 
         <!-- 3. Profiles Import / Export -->
-        <div class="settings-sec" style="padding-top:8px; border-top:1px solid rgba(255,255,255,0.06);">
+        <div class="settings-sec" style="padding-top:8px; border-top:1px solid rgba(var(--ink), 0.06);">
           <div class="sec-heading">Профили</div>
           <div class="btn-group-2">
             <button class="btn-outline" id="importProfilesBtn">
@@ -1944,7 +2050,7 @@
         </div>
 
         <!-- 4. Backup -->
-        <div class="settings-sec" style="padding-top:8px; border-top:1px solid rgba(255,255,255,0.06);">
+        <div class="settings-sec" style="padding-top:8px; border-top:1px solid rgba(var(--ink), 0.06);">
           <div class="sec-heading">Резервная копия</div>
           <div class="btn-group-2">
             <button class="btn-outline" id="importBackupBtn">
@@ -1959,8 +2065,12 @@
         </div>
 
         <!-- 5. Diagnostics -->
-        <div class="settings-sec" style="padding-top:8px; border-top:1px solid rgba(255,255,255,0.06);">
+        <div class="settings-sec" style="padding-top:8px; border-top:1px solid rgba(var(--ink), 0.06);">
           <div class="sec-heading">Диагностика</div>
+          <button class="btn-outline" id="leakCheckBtn" style="width:100%; margin-bottom:8px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+            Проверить утечки и внешний IP
+          </button>
           <div class="btn-group-2">
             <button class="btn-outline" id="showLogBtn">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
@@ -2033,6 +2143,18 @@
       <div class="sec-heading" style="margin-bottom:6px;">По профилям</div>
       <div id="statsProfiles" style="display:flex; flex-direction:column; gap:6px; max-height:140px; overflow-y:auto;"></div>
       <div class="modal-btns"><button class="modal-btn primary" id="statsClose">Закрыть</button></div>
+    </div>
+  </div>
+
+  <!-- Leak check -->
+  <div class="modal-backdrop" id="leakModal">
+    <div class="glass-modal" style="width:460px;">
+      <h2 style="font-size:18px; font-weight:700; margin-bottom:10px;">Проверка утечек</h2>
+      <div id="leakBody" style="min-height:120px;"></div>
+      <div class="modal-btns">
+        <button class="modal-btn" id="leakAgain">Проверить снова</button>
+        <button class="modal-btn primary" id="leakClose">Закрыть</button>
+      </div>
     </div>
   </div>
 
@@ -2295,6 +2417,7 @@
       const { profiles, activeProfileId, connecting, killSwitchActive, autoStart } = state;
 
       $("autostartCheck").checked = !!autoStart;
+      renderIssue(state.issue);
       if (state.settings) applySettingsToControls(state.settings);
       renderSubscriptions(state.subscriptions || []);
 
@@ -2573,6 +2696,26 @@
     // Settings Drawer logic
     // Only the keys this panel owns are ever sent back, so a stale copy here can
     // never overwrite things the main process changed (favorites, window, ...).
+    // ---- theme
+    function effectiveTheme(mode) {
+      return mode === "light" || (mode === "system" && window.matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
+    }
+    function applyTheme(mode) {
+      document.documentElement.setAttribute("data-theme", effectiveTheme(mode));
+      try { localStorage.setItem("nyxTheme", mode); } catch (e) {}
+      document.querySelectorAll("#themeSeg button").forEach((b) => b.classList.toggle("active", b.dataset.themeMode === mode));
+    }
+    document.querySelectorAll("#themeSeg button").forEach((b) => {
+      b.addEventListener("click", () => {
+        settings.theme = b.dataset.themeMode;
+        applyTheme(settings.theme);
+        persistSettings(false);
+      });
+    });
+    window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
+      if (settings.theme === "system") applyTheme("system");
+    });
+
     function applySettingsToControls(s) {
       settings = {
         killSwitchEnabled: !!s.killSwitchEnabled,
@@ -2586,6 +2729,8 @@
         routing: { directRu: !!s.routing?.directRu, blockAds: !!s.routing?.blockAds },
         dns: { provider: s.dns?.provider || "cloudflare", custom: s.dns?.custom || "" },
         fragment: { enabled: !!s.fragment?.enabled },
+        theme: ["dark", "light", "system"].includes(s.theme) ? s.theme : "dark",
+        rulesUpdatedAt: s.rulesUpdatedAt || null,
         subscriptionsAutoUpdate: s.subscriptionsAutoUpdate !== false
       };
       $("killSwitchToggle").checked = settings.killSwitchEnabled;
@@ -2597,6 +2742,8 @@
       $("blockAdsToggle").checked = settings.routing.blockAds;
       $("fragmentToggle").checked = settings.fragment.enabled;
       renderDnsSelect();
+      applyTheme(settings.theme);
+      renderRulesInfo();
       renderFallbackSelect();
       renderSplitChips();
     }
@@ -2690,6 +2837,64 @@
     $("blockAdsToggle").addEventListener("change", (e) => { settings.routing.blockAds = e.target.checked; persistSettings(); });
     $("fragmentToggle").addEventListener("change", (e) => { settings.fragment.enabled = e.target.checked; persistSettings(); });
 
+    // ---- routing lists
+    function renderRulesInfo() {
+      $("rulesInfo").textContent = settings.rulesUpdatedAt
+        ? "обновлены " + new Date(settings.rulesUpdatedAt).toLocaleDateString("ru-RU")
+        : "встроены в приложение";
+    }
+    $("rulesUpdateBtn").addEventListener("click", async () => {
+      const btn = $("rulesUpdateBtn");
+      btn.disabled = true;
+      btn.textContent = "Скачиваю…";
+      const res = await window.vlessvpn.updateRules();
+      btn.disabled = false;
+      btn.textContent = "Обновить";
+      if (res.ok) {
+        settings.rulesUpdatedAt = res.updatedAt;
+        renderRulesInfo();
+        toast(res.applied ? "Списки обновлены" : "Списки обновлены. Переподключитесь, чтобы они вступили в силу", "success", 3600);
+      } else {
+        toast("Не удалось обновить списки: " + res.error, "error", 4200);
+      }
+    });
+
+    // ---- explained connection problem
+    $("issueClose").addEventListener("click", () => window.vlessvpn.dismissIssue());
+    function renderIssue(issue) {
+      const box = $("issueBanner");
+      box.classList.toggle("show", !!issue);
+      if (issue) {
+        $("issueTitle").textContent = issue.title;
+        $("issueHint").textContent = issue.hint;
+      }
+    }
+
+    // ---- leak check
+    async function runLeakCheck() {
+      const body = $("leakBody");
+      body.innerHTML = '<div style="color:var(--text-muted); font-size:13px;">Проверяю…</div>';
+      $("leakAgain").disabled = true;
+      const r = await window.vlessvpn.checkLeaks();
+      $("leakAgain").disabled = false;
+      const row = (k, v) => `<div class="leak-row"><span>${escapeHtml(k)}</span><span>${escapeHtml(v || "—")}</span></div>`;
+      const place = r.info ? [r.info.country, r.info.city].filter(Boolean).join(", ") : "";
+      body.innerHTML =
+        row("VPN", r.connected ? "включён" + (r.profileName ? " · " + r.profileName : "") : "выключен") +
+        row("Внешний IP", r.info ? r.info.ip : "") +
+        row("Страна", place) +
+        row("Провайдер", r.info ? r.info.isp : "") +
+        `<div class="leak-verdict ${escapeHtml(r.verdict.level)}">${escapeHtml(r.verdict.text)}</div>` +
+        `<div class="leak-dns">${escapeHtml(r.dns)}</div>`;
+    }
+    $("leakCheckBtn").addEventListener("click", () => {
+      $("leakModal").classList.add("open");
+      runLeakCheck();
+    });
+    $("leakAgain").addEventListener("click", runLeakCheck);
+    $("leakClose").addEventListener("click", () => $("leakModal").classList.remove("open"));
+    $("leakModal").addEventListener("click", (e) => { if (e.target === $("leakModal")) $("leakModal").classList.remove("open"); });
+
     // ---- subscriptions
     function renderSubscriptions(subs) {
       const box = $("subList");
@@ -2762,7 +2967,7 @@
       if (mode === "processes") {
         $("tabProcsBtn").style.background = "rgba(139,92,246,0.25)";
         $("tabProcsBtn").style.borderColor = "rgba(139,92,246,0.4)";
-        $("tabProcsBtn").style.color = "#fff";
+        $("tabProcsBtn").style.color = "var(--text-strong)";
         $("tabDomainsBtn").style.background = "transparent";
         $("tabDomainsBtn").style.borderColor = "transparent";
         $("tabDomainsBtn").style.color = "var(--text-dim)";
@@ -2771,7 +2976,7 @@
       } else {
         $("tabDomainsBtn").style.background = "rgba(139,92,246,0.25)";
         $("tabDomainsBtn").style.borderColor = "rgba(139,92,246,0.4)";
-        $("tabDomainsBtn").style.color = "#fff";
+        $("tabDomainsBtn").style.color = "var(--text-strong)";
         $("tabProcsBtn").style.background = "transparent";
         $("tabProcsBtn").style.borderColor = "transparent";
         $("tabProcsBtn").style.color = "var(--text-dim)";
@@ -3094,7 +3299,7 @@
       const barW = Math.max(3, slot * 0.64);
       const base = 128;
       const usable = 118;
-      let svg = `<line x1="0" y1="${base}" x2="480" y2="${base}" stroke="rgba(255,255,255,0.1)"/>`;
+      let svg = `<line x1="0" y1="${base}" x2="480" y2="${base}" style="stroke:rgba(var(--ink), 0.1)"/>`;
       st.days.forEach((d, i) => {
         const x = i * slot + (slot - barW) / 2;
         const hDown = (d.down / max) * usable;
@@ -3113,7 +3318,7 @@
             const label = st.names[pr.id] || "Удалённый профиль";
             return `<div style="font-size:12px;">
               <div style="display:flex; justify-content:space-between; margin-bottom:2px;"><span>${escapeHtml(label)}</span><span style="color:var(--text-dim);">${escapeHtml(formatBytes(sum))}</span></div>
-              <div style="height:4px; border-radius:2px; background:rgba(255,255,255,0.06);"><div style="height:4px; border-radius:2px; width:${Math.max(2, (sum / total) * 100).toFixed(1)}%; background:linear-gradient(90deg,#10b981,#8b5cf6);"></div></div>
+              <div style="height:4px; border-radius:2px; background:rgba(var(--ink), 0.06);"><div style="height:4px; border-radius:2px; width:${Math.max(2, (sum / total) * 100).toFixed(1)}%; background:linear-gradient(90deg,#10b981,#8b5cf6);"></div></div>
             </div>`;
           }).join("")
         : `<div style="font-size:12px; color:var(--text-dim);">Пока нет данных: статистика копится, пока вы подключены.</div>`;

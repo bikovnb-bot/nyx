@@ -22,6 +22,10 @@ const DEFAULT_SETTINGS = {
   dns: { provider: "cloudflare", custom: "" },
   // Split TLS ClientHello into pieces (helps against DPI that blocks by signature).
   fragment: { enabled: false },
+  // "dark" | "light" | "system"
+  theme: "dark",
+  // When the routing lists were last refreshed by hand (null = the bundled ones).
+  rulesUpdatedAt: null,
   subscriptionsAutoUpdate: true,
   lastProfileId: null,
   favorites: [],

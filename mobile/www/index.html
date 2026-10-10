@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Nyx</title>
+<style>
+  :root { color-scheme: dark; --bg:#0B0E14; --text:#F1F5F9; --muted:#94A3B8; --dim:#64748B; --emerald:#10B981; --purple:#8B5CF6; --danger:#EF4444; --card:rgba(22,27,34,.6); --border:rgba(255,255,255,.09); }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { padding: env(safe-area-inset-top) 20px env(safe-area-inset-bottom); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+    background: radial-gradient(circle at 15% 0%, rgba(139,92,246,.35), transparent 50%), radial-gradient(circle at 100% 100%, rgba(16,185,129,.25), transparent 50%), var(--bg); }
+  h1 { font-size: 22px; letter-spacing: 1px; }
+  .power { width: 168px; height: 168px; border-radius: 50%; border: 2px solid rgba(148,163,184,.25); background: radial-gradient(circle at 40% 30%, #1E2330, #0F131A 85%);
+    color: var(--dim); display: flex; align-items: center; justify-content: center; transition: all .3s; box-shadow: 0 16px 40px rgba(0,0,0,.6); }
+  .power svg { width: 56px; height: 56px; }
+  body[data-state="started"] .power { color: var(--emerald); border-color: var(--emerald); box-shadow: 0 0 40px rgba(16,185,129,.45); }
+  body[data-state="starting"] .power, body[data-state="stopping"] .power { color: var(--emerald); border-color: rgba(16,185,129,.5); animation: pulse 1.3s ease-in-out infinite; }
+  body[data-state="error"] .power { color: var(--danger); border-color: var(--danger); }
+  @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.07); box-shadow: 0 0 40px rgba(16,185,129,.6); } }
+  #status { font-size: 20px; font-weight: 700; }
+  body[data-state="started"] #status { color: var(--emerald); }
+  body[data-state="error"] #status { color: var(--danger); }
+  #sub { font-size: 13px; color: var(--muted); text-align: center; max-width: 320px; min-height: 18px; }
+  textarea { width: 100%; max-width: 420px; height: 76px; border-radius: 12px; border: 1px solid var(--border); background: var(--card); color: var(--text); padding: 10px 12px; font: 12px monospace; resize: none; outline: none; }
+  textarea:focus { border-color: var(--purple); }
+  .hint { font-size: 11px; color: var(--dim); max-width: 420px; text-align: center; }
+</style>
+</head>
+<body data-state="stopped">
+  <h1>Nyx</h1>
+  <button class="power" id="power" aria-label="Подключить">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg>
+  </button>
+  <div id="status">Отключено</div>
+  <div id="sub"></div>
+  <textarea id="link" placeholder="Вставьте ссылку vless://..." spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+  <div class="hint">Этап 1: проверка VPN на телефоне. Полный интерфейс будет следующим шагом.</div>
+
+<script src="nyx-core.js"></script>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const vpn = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NyxVpn;
+  const TEXT = { stopped: "Отключено", starting: "Подключение…", started: "Защищено", stopping: "Отключение…", error: "Ошибка" };
+  let state = "stopped";
+
+  function render(s, error) {
+    state = s;
+    document.body.dataset.state = s;
+    $("status").textContent = TEXT[s] || s;
+    $("sub").textContent = s === "error" ? (error || "Не удалось подключиться") : "";
+  }
+
+  try { $("link").value = localStorage.getItem("nyxLink") || ""; } catch (e) {}
+
+  async function toggle() {
+    if (!vpn) { render("error", "Нет доступа к VPN-службе (запустите на телефоне)"); return; }
+    if (state === "starting" || state === "stopping") return;
+    if (state === "started") { await vpn.stop(); return; }
+    const link = $("link").value.trim();
+    try {
+      localStorage.setItem("nyxLink", link);
+      const { config } = NyxCore.buildMobileConfig(link, {});
+      render("starting");
+      await vpn.start({ config: JSON.stringify(config) });
+    } catch (e) {
+      render("error", e && e.message ? e.message : String(e));
+    }
+  }
+
+  $("power").addEventListener("click", toggle);
+  if (vpn) {
+    vpn.addListener("status", (e) => render(e.state, e.error));
+    vpn.status().then((e) => render(e.state, e.error));
+  }
+</script>
+</body>
+</html>

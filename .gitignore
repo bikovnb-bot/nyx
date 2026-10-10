@@ -10,3 +10,13 @@ _preview.html
 
 installer/payload/
 release-installer/
+
+# mobile app
+mobile/node_modules/
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/app/build/
+mobile/android/app/libs/libbox.aar
+mobile/android/capacitor-cordova-android-plugins/build/
+mobile/android/local.properties
+mobile/www/nyx-core.js

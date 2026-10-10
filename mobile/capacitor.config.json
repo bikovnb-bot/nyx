@@ -1,0 +1,6 @@
+{
+  "appId": "com.nyx.mobile",
+  "appName": "Nyx",
+  "webDir": "www",
+  "android": { "allowMixedContent": false }
+}

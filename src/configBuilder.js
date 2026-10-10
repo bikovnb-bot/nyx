@@ -86,7 +86,7 @@ export function buildSingBoxConfig(profile, opts = {}) {
   const usedSets = [...(directRu ? ["geosite-ru", "geoip-ru"] : []), ...(blockAds ? ["geosite-ads"] : [])];
   const dnsRules = [
     ...(blockAds ? [{ rule_set: ["geosite-ads"], action: "reject" }] : []),
-    ...(directRu ? [{ rule_set: ["geosite-ru"], server: "ru-dns" }, { domain_suffix: RU_TLDS, server: "ru-dns" }] : []),
+    ...(directRu ? [{ rule_set: ["geosite-ru"], action: "route", server: "ru-dns", strategy: "ipv4_only" }, { domain_suffix: RU_TLDS, action: "route", server: "ru-dns", strategy: "ipv4_only" }] : []),
   ];
   const tunAddress = opts.tunAddress || ["172.19.0.1/30", "fdfe:dcba:9876::1/126"];
 
@@ -137,8 +137,10 @@ export function buildSingBoxConfig(profile, opts = {}) {
       },
       // The direct outbound looks names up itself; without this it would use the
       // default resolver (through the tunnel), which defeats sending RU sites
-      // directly and can fail outright.
-      { type: "direct", tag: "direct", domain_resolver: directRu ? "ru-dns" : undefined },
+      // directly and can fail outright. IPv4 only: Russian sites often answer
+      // with IPv6 addresses, and without IPv6 on the PC that connection never
+      // gets established (and is not retried over IPv4).
+      { type: "direct", tag: "direct", domain_resolver: directRu ? { server: "ru-dns", strategy: "ipv4_only" } : undefined },
       { type: "block", tag: "block" },
     ],
     route: {

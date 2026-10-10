@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildSingBoxConfig } from "./configBuilder.js";
+import { buildSingBoxConfig, resolveDnsServer } from "./configBuilder.js";
 import { parseVlessLink } from "./parseLink.js";
 
 test("builds a ws+tls outbound", () => {
@@ -60,4 +60,40 @@ test("routes listed domains and processes directly when split tunneling is enabl
   const processRule = config.route.rules.find((r) => r.process_name);
   assert.deepEqual(domainRule, { domain_suffix: ["example.com"], outbound: "direct" });
   assert.deepEqual(processRule, { process_name: ["chrome.exe"], outbound: "direct" });
+});
+
+test("ready-made routing: Russian sites direct, ads blocked, only when enabled", () => {
+  const profile = parseVlessLink("vless://uuid@host:443");
+  const off = buildSingBoxConfig(profile, { rulesDir: "/r" });
+  assert.equal(off.route.rule_set, undefined);
+  assert.equal(off.dns.rules, undefined);
+  assert.equal(off.dns.servers.length, 1);
+
+  const on = buildSingBoxConfig(profile, { rulesDir: "/r", routing: { directRu: true, blockAds: true } });
+  assert.deepEqual(on.route.rule_set.map((r) => r.tag), ["geosite-ru", "geoip-ru", "geosite-ads"]);
+  assert.ok(on.route.rules.some((r) => r.rule_set?.includes("geoip-ru") && r.outbound === "direct"));
+  assert.ok(on.route.rules.some((r) => r.rule_set?.includes("geosite-ads") && r.action === "reject"));
+  assert.ok(on.dns.servers.some((s) => s.tag === "ru-dns"));
+  // ads are rejected before anything can be routed directly
+  const adsAt = on.route.rules.findIndex((r) => r.rule_set?.includes("geosite-ads"));
+  const directAt = on.route.rules.findIndex((r) => r.outbound === "direct");
+  assert.ok(adsAt < directAt);
+  // without the rules folder the options are ignored instead of producing a broken config
+  assert.equal(buildSingBoxConfig(profile, { routing: { directRu: true } }).route.rule_set, undefined);
+});
+
+test("DNS provider selection, with a safe fallback for bad custom values", () => {
+  assert.equal(resolveDnsServer({ provider: "google" }), "8.8.8.8");
+  assert.equal(resolveDnsServer({ provider: "quad9" }), "9.9.9.9");
+  assert.equal(resolveDnsServer({ provider: "custom", custom: " 9.9.9.10 " }), "9.9.9.10");
+  assert.equal(resolveDnsServer({ provider: "custom", custom: "evil.example" }), "1.1.1.1");
+  assert.equal(resolveDnsServer(undefined), "1.1.1.1");
+  const profile = parseVlessLink("vless://uuid@host:443");
+  assert.equal(buildSingBoxConfig(profile, { dns: { provider: "google" } }).dns.servers[0].server, "8.8.8.8");
+});
+
+test("TLS fragment is only added when enabled", () => {
+  const tls = parseVlessLink("vless://uuid@host:443?security=tls");
+  assert.equal(buildSingBoxConfig(tls).outbounds[0].tls.fragment, undefined);
+  assert.equal(buildSingBoxConfig(tls, { fragment: true }).outbounds[0].tls.fragment, true);
 });

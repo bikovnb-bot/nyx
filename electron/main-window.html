@@ -35,8 +35,8 @@
     --ring-glow: rgba(16, 185, 129, 0.45);
   }
   body[data-state="connecting"] {
-    --ring-state: #F59E0B;
-    --ring-glow: rgba(245, 158, 11, 0.35);
+    --ring-state: #10B981;
+    --ring-glow: rgba(16, 185, 129, 0.45);
   }
   body[data-state="blocked"] {
     --ring-state: #EF4444;
@@ -227,13 +227,13 @@
   }
 
   body[data-state="connecting"] .status-pill {
-    background: rgba(245, 158, 11, 0.1);
-    border-color: rgba(245, 158, 11, 0.25);
-    color: var(--warn);
+    background: rgba(16, 185, 129, 0.1);
+    border-color: rgba(16, 185, 129, 0.25);
+    color: var(--accent-emerald);
   }
   body[data-state="connecting"] .pulse-indicator {
-    background: var(--warn);
-    box-shadow: 0 0 8px var(--warn);
+    background: var(--accent-emerald);
+    box-shadow: 0 0 8px var(--accent-emerald);
   }
 
   body[data-state="blocked"] .status-pill {
@@ -919,7 +919,7 @@
     transition: color 0.3s ease;
   }
   body[data-state="connected"] .status-title { color: var(--accent-emerald); }
-  body[data-state="connecting"] .status-title { color: var(--warn); }
+  body[data-state="connecting"] .status-title { color: var(--accent-emerald); }
   body[data-state="blocked"] .status-title { color: var(--danger); }
 
   .status-subtitle {
@@ -1530,6 +1530,53 @@
   .stats-period.active { background: rgba(139, 92, 246, 0.25); border-color: rgba(139, 92, 246, 0.4); color: #fff; }
   #qrBox svg { width: 100%; height: 100%; display: block; }
   select.quick-add-input { height: 32px; }
+  /* ---- connecting: the whole button pulses ---- */
+  body[data-state="connecting"] .power-spinner { display: none; }
+  body[data-state="connecting"] .power-btn-wrapper { animation: btn-pulse 1.3s ease-in-out infinite; }
+  @keyframes btn-pulse {
+    0%, 100% { transform: scale(1); filter: drop-shadow(0 0 6px rgba(16, 185, 129, 0.25)); }
+    50% { transform: scale(1.07); filter: drop-shadow(0 0 26px rgba(16, 185, 129, 0.7)); }
+  }
+  body[data-state="connecting"] .power-outer-circle { border-color: rgba(16, 185, 129, 0.5); }
+  body[data-state="connecting"] .power-btn-label { color: var(--accent-emerald); }
+  body[data-state="connecting"] .power-icon { color: var(--accent-emerald); }
+  .power-btn-label.dots::after { content: ""; display: inline-block; width: 1.1em; text-align: left; animation: label-dots 1.2s steps(1, end) infinite; }
+  @keyframes label-dots {
+    0% { content: ""; }
+    25% { content: "."; }
+    50% { content: ".."; }
+    75% { content: "..."; }
+  }
+  /* a short flash when the connection comes up */
+  .power-btn-wrapper.burst .power-outer-circle { animation: power-burst 0.9s ease-out; }
+  @keyframes power-burst {
+    0% { transform: scale(0.96); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7), 0 0 28px rgba(16, 185, 129, 0.6); }
+    100% { transform: scale(1); box-shadow: 0 0 0 38px rgba(16, 185, 129, 0), 0 0 28px rgba(16, 185, 129, 0.2); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    body[data-state="connecting"] .power-btn-wrapper { animation: none; }
+  }
+  /* ---- custom dropdown (matches the app's dark cards) ---- */
+  .dd { position: relative; width: 100%; outline: none; }
+  .dd-value {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 9px 12px; border-radius: 10px; font-size: 13px; cursor: pointer;
+    background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text); transition: border-color 0.15s, background 0.15s;
+  }
+  .dd-value span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dd-value svg { flex: none; color: var(--text-muted); transition: transform 0.2s; }
+  .dd:hover .dd-value, .dd:focus-visible .dd-value, .dd.open .dd-value { border-color: var(--accent-purple); background: rgba(255, 255, 255, 0.06); }
+  .dd.open .dd-value svg { transform: rotate(180deg); }
+  .dd-list {
+    display: none; position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 30;
+    max-height: 190px; overflow-y: auto; padding: 4px; border-radius: 10px;
+    background: #141923; border: 1px solid rgba(255, 255, 255, 0.12); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
+  }
+  .dd.open .dd-list { display: block; }
+  .dd-item { padding: 8px 10px; border-radius: 7px; font-size: 13px; color: var(--text-muted); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dd-item:hover { background: rgba(139, 92, 246, 0.16); color: var(--text); }
+  .dd-item.selected { color: var(--accent-emerald); background: rgba(16, 185, 129, 0.1); }
 </style>
 </head>
 <body data-state="disconnected">
@@ -1643,7 +1690,7 @@
             </div>
             <div class="mini-badge">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12.5a10 10 0 0 1 14 0"/><path d="M8.5 16a5 5 0 0 1 7 0"/><circle cx="12" cy="19.5" r="1" fill="currentColor"/></svg>
-              <span>Пинг: <strong id="pingLatencyVal">—</strong></span>
+              <span title="Задержка до интернета через туннель: запрос проходит через VPN-сервер и обратно">Задержка: <strong id="pingLatencyVal">—</strong></span>
             </div>
           </div>
         </div>
@@ -1768,9 +1815,46 @@
           </div>
           <div id="fallbackRow" style="display:none; flex-direction:column; gap:4px;">
             <span style="font-size:11px; color:var(--text-dim);">Запасной профиль</span>
-            <select id="fallbackSelect" class="quick-add-input" style="width:100%;"></select>
+            <div class="dd" id="fallbackSelect" tabindex="0" role="listbox">
+              <div class="dd-value"><span id="fallbackLabel"></span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></div>
+              <div class="dd-list" id="fallbackList"></div>
+            </div>
           </div>
           <p style="font-size:11px; color:var(--text-dim); line-height:1.35;">С включённым kill switch сеть блокируется только после неудачных попыток переподключения: иначе нечем было бы подключиться заново.</p>
+        </div>
+
+        <!-- 0c. Routing, DNS, censorship circumvention -->
+        <div class="settings-sec" style="padding-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.06);">
+          <div class="sec-heading"><span>Маршрутизация и DNS</span></div>
+          <div class="switch-row" style="margin-top:6px;">
+            <div>
+              <div style="font-weight:500;">Сайты РФ напрямую</div>
+              <div style="font-size:11px; color:var(--text-dim);">Банки, госуслуги, маркетплейсы и все .ru идут мимо VPN</div>
+            </div>
+            <label class="switch"><input type="checkbox" id="directRuToggle" /></label>
+          </div>
+          <div class="switch-row" style="margin-top:6px;">
+            <div>
+              <div style="font-weight:500;">Блокировка рекламы и трекеров</div>
+              <div style="font-size:11px; color:var(--text-dim);">Блокируются рекламные домены (не вся реклама)</div>
+            </div>
+            <label class="switch"><input type="checkbox" id="blockAdsToggle" /></label>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:4px; margin-top:8px;">
+            <span style="font-size:11px; color:var(--text-dim);">DNS-сервер (DNS-over-HTTPS, через туннель)</span>
+            <div class="dd" id="dnsSelect" tabindex="0" role="listbox">
+              <div class="dd-value"><span id="dnsLabel"></span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></div>
+              <div class="dd-list" id="dnsList"></div>
+            </div>
+            <input id="dnsCustomInput" class="quick-add-input" style="display:none; width:100%;" placeholder="IP-адрес DoH-сервера, например 9.9.9.9" spellcheck="false" />
+          </div>
+          <div class="switch-row" style="margin-top:6px;">
+            <div>
+              <div style="font-weight:500;">Обход блокировок (TLS fragment)</div>
+              <div style="font-size:11px; color:var(--text-dim);">Делит TLS-рукопожатие на части против DPI. Включайте, если провайдер блокирует подключение</div>
+            </div>
+            <label class="switch"><input type="checkbox" id="fragmentToggle" /></label>
+          </div>
         </div>
 
         <!-- 1. Split-Tunneling / Processes & Domains -->
@@ -2018,7 +2102,6 @@
     let searchQuery = "";
     let selectedCountry = "all";
     let latencyInterval = null;
-    const pingCache = {};
     const trafficHistory = [];
     const MAX_TRAFFIC_POINTS = 60;
 
@@ -2205,6 +2288,8 @@
       }
     }
 
+    let previousMode = null;
+
     function renderState(state) {
       currentState = state;
       const { profiles, activeProfileId, connecting, killSwitchActive, autoStart } = state;
@@ -2228,7 +2313,7 @@
       $("heroIpBadge").dataset.host = heroHost;
       $("heroIpBadge").title = heroHost ? `${countryName(heroCode) ? countryName(heroCode) + ". " : ""}Сервер ${heroHost}. Нажмите, чтобы скопировать адрес` : "";
       $("heroIpBadge").style.display = heroHost ? "flex" : "none";
-      const mode = activeProfileId ? "connected" : connecting ? "connecting" : killSwitchActive ? "blocked" : "disconnected";
+      const mode = connecting ? "connecting" : activeProfileId ? "connected" : killSwitchActive ? "blocked" : "disconnected";
       document.body.dataset.state = mode;
 
       const titleStatusMap = {
@@ -2255,7 +2340,16 @@
       };
       $("statusSubtitle").textContent = subtitleMap[mode];
       $("statusSubtitle").style.display = subtitleMap[mode] ? "" : "none";
-      $("powerBtnLabel").textContent = mode === "connected" ? "ВКЛ" : "VPN";
+      $("powerBtnLabel").textContent = mode === "connected" ? "ВКЛ" : mode === "connecting" ? "Подключение" : "VPN";
+      $("powerBtnLabel").classList.toggle("dots", mode === "connecting");
+      if (previousMode === "connecting" && mode === "connected") {
+        const wrap = document.querySelector(".power-btn-wrapper");
+        wrap.classList.remove("burst");
+        void wrap.offsetWidth;
+        wrap.classList.add("burst");
+        setTimeout(() => wrap.classList.remove("burst"), 1000);
+      }
+      previousMode = mode;
 
       $("networkStatusTag").textContent = mode === "connected" ? "Активно" : "Неактивно";
       $("networkStatusTag").style.color = mode === "connected" ? "var(--accent-emerald)" : "var(--text-dim)";
@@ -2305,9 +2399,6 @@
         const isExpanded = expandedProfiles.has(p.id);
         const details = parseLinkDetails(p.link);
         const flag = flagHtml(profileCountryCode(p));
-        const ping = pingCache[p.id];
-        const pingCls = ping && ping.ok ? getPingClass(ping.ms) : "bad";
-
         const card = document.createElement("div");
         card.className = `profile-card ${isActive ? "active" : ""} ${isExpanded ? "expanded" : ""}`;
         card.innerHTML = `
@@ -2317,7 +2408,6 @@
             <div class="profile-title" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</div>
             <div class="profile-header-meta">
               <span class="tag ${details.security === 'REALITY' ? 'reality' : details.security === 'TLS' ? 'tls' : ''}">${escapeHtml(details.security)}</span>
-              ${ping ? `<span class="tag ping ${pingCls}">${ping.ok ? ping.ms + ' ms' : 'ошибка'}</span>` : ''}
               <button class="fav-btn ${p.favorite ? 'on' : ''}" title="${p.favorite ? 'Убрать из избранного' : 'В избранное'}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
               </button>
@@ -2340,9 +2430,6 @@
                 <span class="tag" style="opacity:0.75;">ID: ${escapeHtml(p.id.slice(0, 8))}</span>
               </div>
               <div class="profile-micro-actions">
-                <button class="micro-act-btn ping-btn" title="Проверить пинг">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-                </button>
                 <button class="micro-act-btn copy-btn" title="Скопировать ссылку">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                 </button>
@@ -2380,13 +2467,6 @@
             card.classList.add("expanded");
             toggleBtn.title = "Свернуть подробности";
           }
-        });
-
-        card.querySelector(".ping-btn").addEventListener("click", async (e) => {
-          e.stopPropagation();
-          e.currentTarget.style.opacity = "0.4";
-          pingCache[p.id] = await window.vlessvpn.pingProfile(p.id);
-          renderProfilesList(currentState.profiles, currentState.activeProfileId);
         });
 
         card.querySelector(".copy-btn").addEventListener("click", (e) => {
@@ -2442,6 +2522,7 @@
         toast("Добавьте профиль для подключения", "error");
         $("addProfileBtn").click();
       } else {
+        renderState({ ...currentState, connecting: true }); // instant feedback; main confirms right after
         window.vlessvpn.quickConnect();
       }
     });
@@ -2502,6 +2583,9 @@
         },
         autoBest: { enabled: !!s.autoBest?.enabled },
         autoReconnect: { enabled: !!s.autoReconnect?.enabled, fallbackProfileId: s.autoReconnect?.fallbackProfileId || "auto" },
+        routing: { directRu: !!s.routing?.directRu, blockAds: !!s.routing?.blockAds },
+        dns: { provider: s.dns?.provider || "cloudflare", custom: s.dns?.custom || "" },
+        fragment: { enabled: !!s.fragment?.enabled },
         subscriptionsAutoUpdate: s.subscriptionsAutoUpdate !== false
       };
       $("killSwitchToggle").checked = settings.killSwitchEnabled;
@@ -2509,6 +2593,10 @@
       $("autoBestToggle").checked = settings.autoBest.enabled;
       $("autoReconnectToggle").checked = settings.autoReconnect.enabled;
       $("subAutoToggle").checked = settings.subscriptionsAutoUpdate;
+      $("directRuToggle").checked = settings.routing.directRu;
+      $("blockAdsToggle").checked = settings.routing.blockAds;
+      $("fragmentToggle").checked = settings.fragment.enabled;
+      renderDnsSelect();
       renderFallbackSelect();
       renderSplitChips();
     }
@@ -2526,20 +2614,34 @@
 
     function renderFallbackSelect() {
       const row = $("fallbackRow");
-      const sel = $("fallbackSelect");
+      const list = $("fallbackList");
       row.style.display = settings.autoReconnect.enabled ? "flex" : "none";
-      sel.innerHTML = "";
-      const add = (value, label) => {
-        const o = document.createElement("option");
-        o.value = value;
-        o.textContent = label;
-        sel.appendChild(o);
-      };
-      add("auto", "Любой доступный (по пингу)");
-      for (const pr of currentState.profiles) add(pr.id, pr.name);
+      const options = [["auto", "Любой доступный (по пингу)"], ...currentState.profiles.map((pr) => [pr.id, pr.name])];
       const wanted = settings.autoReconnect.fallbackProfileId;
-      sel.value = [...sel.options].some((o) => o.value === wanted) ? wanted : "auto";
+      const current = options.some((o) => o[0] === wanted) ? wanted : "auto";
+      $("fallbackLabel").textContent = options.find((o) => o[0] === current)[1];
+      list.innerHTML = options
+        .map(([v, l]) => `<div class="dd-item${v === current ? " selected" : ""}" role="option" data-value="${escapeHtml(v)}">${escapeHtml(l)}</div>`)
+        .join("");
     }
+
+    const fallbackDd = $("fallbackSelect");
+    fallbackDd.addEventListener("click", (e) => {
+      const item = e.target.closest(".dd-item");
+      if (item) {
+        settings.autoReconnect.fallbackProfileId = item.dataset.value;
+        renderFallbackSelect();
+        persistSettings(false);
+        fallbackDd.classList.remove("open");
+      } else {
+        fallbackDd.classList.toggle("open");
+      }
+    });
+    fallbackDd.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fallbackDd.classList.toggle("open"); }
+      else if (e.key === "Escape" && fallbackDd.classList.contains("open")) { e.stopPropagation(); fallbackDd.classList.remove("open"); }
+    });
+    document.addEventListener("click", (e) => { if (!fallbackDd.contains(e.target)) fallbackDd.classList.remove("open"); });
 
     $("autoBestToggle").addEventListener("change", (e) => { settings.autoBest.enabled = e.target.checked; persistSettings(false); });
     $("autoReconnectToggle").addEventListener("change", (e) => {
@@ -2547,8 +2649,46 @@
       renderFallbackSelect();
       persistSettings(false);
     });
-    $("fallbackSelect").addEventListener("change", (e) => { settings.autoReconnect.fallbackProfileId = e.target.value; persistSettings(false); });
     $("subAutoToggle").addEventListener("change", (e) => { settings.subscriptionsAutoUpdate = e.target.checked; persistSettings(false); });
+
+
+    // ---- routing, DNS, fragment
+    const DNS_OPTIONS = [["cloudflare", "Cloudflare (1.1.1.1)"], ["google", "Google (8.8.8.8)"], ["quad9", "Quad9 (9.9.9.9)"], ["custom", "Свой адрес…"]];
+    function renderDnsSelect() {
+      const cur = settings.dns.provider;
+      $("dnsLabel").textContent = (DNS_OPTIONS.find((o) => o[0] === cur) || DNS_OPTIONS[0])[1];
+      $("dnsList").innerHTML = DNS_OPTIONS
+        .map(([v, l]) => `<div class="dd-item${v === cur ? " selected" : ""}" role="option" data-value="${v}">${escapeHtml(l)}</div>`)
+        .join("");
+      $("dnsCustomInput").style.display = cur === "custom" ? "block" : "none";
+      $("dnsCustomInput").value = settings.dns.custom;
+    }
+    const dnsDd = $("dnsSelect");
+    dnsDd.addEventListener("click", (e) => {
+      const item = e.target.closest(".dd-item");
+      if (item) {
+        settings.dns.provider = item.dataset.value;
+        renderDnsSelect();
+        persistSettings();
+        dnsDd.classList.remove("open");
+      } else {
+        dnsDd.classList.toggle("open");
+      }
+    });
+    dnsDd.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); dnsDd.classList.toggle("open"); }
+      else if (e.key === "Escape" && dnsDd.classList.contains("open")) { e.stopPropagation(); dnsDd.classList.remove("open"); }
+    });
+    document.addEventListener("click", (e) => { if (!dnsDd.contains(e.target)) dnsDd.classList.remove("open"); });
+    $("dnsCustomInput").addEventListener("change", (e) => {
+      const v = e.target.value.trim();
+      if (v && !/^[0-9a-fA-F:.]+$/.test(v)) { toast("Нужен IP-адрес, например 9.9.9.9", "error"); return; }
+      settings.dns.custom = v;
+      persistSettings();
+    });
+    $("directRuToggle").addEventListener("change", (e) => { settings.routing.directRu = e.target.checked; persistSettings(); });
+    $("blockAdsToggle").addEventListener("change", (e) => { settings.routing.blockAds = e.target.checked; persistSettings(); });
+    $("fragmentToggle").addEventListener("change", (e) => { settings.fragment.enabled = e.target.checked; persistSettings(); });
 
     // ---- subscriptions
     function renderSubscriptions(subs) {
@@ -2817,6 +2957,11 @@
 
     // About Modal
     $("aboutBtn").addEventListener("click", async () => {
+      // Open immediately and fill in as the data arrives: the version lookups can
+      // take a moment and must never hold the dialog back.
+      $("aboutModal").classList.add("open");
+      renderUpdateStatus(updateState);
+      window.vlessvpn.getUpdateStatus().then((st) => { updateState = st; renderUpdateStatus(st); });
       const info = await window.vlessvpn.getAppInfo();
       $("aboutVerText").textContent = `v${info.version}`;
       $("aboutDetailsRows").innerHTML = [
@@ -2825,9 +2970,6 @@
         ["Electron", info.electron],
         ["Node.js", info.node]
       ].map(([k, v]) => `<div class="about-row"><span>${escapeHtml(k)}</span><span>${escapeHtml(v)}</span></div>`).join("");
-      updateState = await window.vlessvpn.getUpdateStatus();
-      renderUpdateStatus(updateState);
-      $("aboutModal").classList.add("open");
     });
     $("aboutModalClose").addEventListener("click", () => $("aboutModal").classList.remove("open"));
     $("aboutModal").addEventListener("click", (e) => {
@@ -2994,6 +3136,7 @@
 
     // Initial setup
     window.vlessvpn.onState(renderState);
+    window.vlessvpn.onOpenSettings?.(openDrawer);
     window.vlessvpn.getState().then((state) => {
       renderState(state);
       if (state.settings && state.settings.hints && !state.settings.hints.trayShown) {

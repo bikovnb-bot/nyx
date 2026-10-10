@@ -1,6 +1,6 @@
 {
   "name": "nyx-vpn-client",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Nyx — cross-platform VLESS+WS+TLS VPN client (TUN mode) built on top of sing-box",
   "author": "Balamut",
   "type": "module",
@@ -48,6 +48,10 @@
       {
         "from": "vendor/sing-box.exe",
         "to": "vendor/sing-box.exe"
+      },
+      {
+        "from": "vendor/rules",
+        "to": "rules"
       }
     ],
     "win": {

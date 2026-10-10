@@ -16,6 +16,12 @@ const DEFAULT_SETTINGS = {
   // If the tunnel drops, try the same profile again, then a fallback.
   // fallbackProfileId: "auto" = best available by ping, or a profile id.
   autoReconnect: { enabled: false, fallbackProfileId: "auto" },
+  // Ready-made routing: Russian sites go out directly, ads/trackers are blocked.
+  routing: { directRu: false, blockAds: false },
+  // provider: "cloudflare" | "google" | "quad9" | "custom" (custom = an IP address)
+  dns: { provider: "cloudflare", custom: "" },
+  // Split TLS ClientHello into pieces (helps against DPI that blocks by signature).
+  fragment: { enabled: false },
   subscriptionsAutoUpdate: true,
   lastProfileId: null,
   favorites: [],

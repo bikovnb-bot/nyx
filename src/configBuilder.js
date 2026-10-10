@@ -1,3 +1,28 @@
+import { isIP } from "node:net";
+import path from "node:path";
+
+export const DNS_PROVIDERS = {
+  cloudflare: { label: "Cloudflare", server: "1.1.1.1" },
+  google: { label: "Google", server: "8.8.8.8" },
+  quad9: { label: "Quad9", server: "9.9.9.9" },
+};
+
+// DNS-over-HTTPS server address for the chosen provider. A custom entry must be
+// an IP address (a hostname would itself need resolving first); anything
+// invalid falls back to Cloudflare rather than leaving the tunnel without DNS.
+export function resolveDnsServer(dns) {
+  if (dns?.provider === "custom" && isIP(String(dns.custom || "").trim())) return String(dns.custom).trim();
+  return (DNS_PROVIDERS[dns?.provider] || DNS_PROVIDERS.cloudflare).server;
+}
+
+export const RULE_SETS = {
+  "geosite-ru": "geosite-category-ru.srs",
+  "geoip-ru": "geoip-ru.srs",
+  "geosite-ads": "geosite-category-ads-all.srs",
+};
+const RU_TLDS = ["ru", "su", "xn--p1ai"];
+const RU_DNS_SERVER = "77.88.8.8";
+
 function buildTransport(profile) {
   if (profile.type === "ws") {
     return {
@@ -15,10 +40,11 @@ function buildTransport(profile) {
   return undefined;
 }
 
-function buildTls(profile) {
+function buildTls(profile, fragment = false) {
   if (profile.security === "tls") {
     return {
       enabled: true,
+      fragment: fragment || undefined,
       server_name: profile.sni || undefined,
       insecure: profile.allowInsecure,
       utls: { enabled: true, fingerprint: profile.fingerprint },
@@ -27,6 +53,7 @@ function buildTls(profile) {
   if (profile.security === "reality") {
     return {
       enabled: true,
+      fragment: fragment || undefined,
       server_name: profile.sni || undefined,
       utls: { enabled: true, fingerprint: profile.fingerprint },
       reality: {
@@ -54,6 +81,13 @@ function buildSplitTunnelRules(splitTunneling) {
 }
 
 export function buildSingBoxConfig(profile, opts = {}) {
+  const directRu = !!opts.routing?.directRu && !!opts.rulesDir;
+  const blockAds = !!opts.routing?.blockAds && !!opts.rulesDir;
+  const usedSets = [...(directRu ? ["geosite-ru", "geoip-ru"] : []), ...(blockAds ? ["geosite-ads"] : [])];
+  const dnsRules = [
+    ...(blockAds ? [{ rule_set: ["geosite-ads"], action: "reject" }] : []),
+    ...(directRu ? [{ rule_set: ["geosite-ru"], server: "ru-dns" }, { domain_suffix: RU_TLDS, server: "ru-dns" }] : []),
+  ];
   const tunAddress = opts.tunAddress || ["172.19.0.1/30", "fdfe:dcba:9876::1/126"];
 
   return {
@@ -62,7 +96,13 @@ export function buildSingBoxConfig(profile, opts = {}) {
       clash_api: { external_controller: CLASH_API_ADDRESS },
     },
     dns: {
-      servers: [{ type: "https", tag: "remote-dns", server: "1.1.1.1", detour: "proxy" }],
+      servers: [
+        { type: "https", tag: "remote-dns", server: resolveDnsServer(opts.dns), detour: "proxy" },
+        // Only for Russian sites that are sent directly: resolving them through
+        // a foreign server would often return an address abroad.
+        ...(directRu ? [{ type: "udp", tag: "ru-dns", server: RU_DNS_SERVER }] : []),
+      ],
+      rules: dnsRules.length ? dnsRules : undefined,
       final: "remote-dns",
     },
     inbounds: [
@@ -93,17 +133,30 @@ export function buildSingBoxConfig(profile, opts = {}) {
         uuid: profile.uuid,
         flow: profile.flow || undefined,
         transport: buildTransport(profile),
-        tls: buildTls(profile),
+        tls: buildTls(profile, !!opts.fragment),
       },
       { type: "direct", tag: "direct" },
       { type: "block", tag: "block" },
     ],
     route: {
+      rule_set: !usedSets.length ? undefined : usedSets.map((tag) => ({
+        type: "local",
+        tag,
+        format: "binary",
+        path: path.join(opts.rulesDir, RULE_SETS[tag]),
+      })),
       rules: [
         { action: "sniff" },
         { port: 53, action: "hijack-dns" },
+        ...(blockAds ? [{ rule_set: ["geosite-ads"], action: "reject" }] : []),
         { ip_is_private: true, outbound: "direct" },
         ...buildSplitTunnelRules(opts.splitTunneling),
+        ...(directRu
+          ? [
+              { rule_set: ["geosite-ru", "geoip-ru"], outbound: "direct" },
+              { domain_suffix: RU_TLDS, outbound: "direct" },
+            ]
+          : []),
       ],
       final: "proxy",
       auto_detect_interface: true,

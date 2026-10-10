@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn, spawnSync, execFile } from "node:child_process";
 import { platform } from "node:os";
 import { existsSync, rmSync } from "node:fs";
 import path from "node:path";
@@ -14,6 +14,14 @@ const PACKAGED_BINARY = process.resourcesPath
   ? path.join(process.resourcesPath, "vendor", BINARY_NAME)
   : null;
 
+const RULES_DIR = process.resourcesPath && PACKAGED_BINARY && existsSync(path.join(process.resourcesPath, "rules"))
+  ? path.join(process.resourcesPath, "rules")
+  : path.join(__dirname, "..", "vendor", "rules");
+
+export function findRulesDir() {
+  return existsSync(RULES_DIR) ? RULES_DIR : null;
+}
+
 export function findSingBoxBinary() {
   if (process.env.SINGBOX_PATH) return process.env.SINGBOX_PATH;
   if (PACKAGED_BINARY && existsSync(PACKAGED_BINARY)) return PACKAGED_BINARY;
@@ -21,12 +29,25 @@ export function findSingBoxBinary() {
   return BINARY_NAME;
 }
 
+export function parseSingBoxVersion(stdout) {
+  if (!stdout) return null;
+  const match = /version\s+([^\s]+)/i.exec(stdout);
+  return match ? match[1] : stdout.trim().split("\n")[0];
+}
+
 export function getSingBoxVersion() {
-  const bin = findSingBoxBinary();
-  const result = spawnSync(bin, ["version"], { encoding: "utf8" });
-  if (result.status !== 0 || !result.stdout) return null;
-  const match = /version\s+([^\s]+)/i.exec(result.stdout);
-  return match ? match[1] : result.stdout.trim().split("\n")[0];
+  const result = spawnSync(findSingBoxBinary(), ["version"], { encoding: "utf8" });
+  return result.status === 0 ? parseSingBoxVersion(result.stdout) : null;
+}
+
+// `sing-box version` takes 1-2 seconds to start (large binary, antivirus scan),
+// so the app asks for it once in the background instead of blocking on it.
+export function getSingBoxVersionAsync() {
+  return new Promise((resolve) => {
+    execFile(findSingBoxBinary(), ["version"], { encoding: "utf8", windowsHide: true, timeout: 10000 }, (err, stdout) => {
+      resolve(err ? null : parseSingBoxVersion(stdout));
+    });
+  });
 }
 
 export function isElevated() {

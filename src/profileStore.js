@@ -47,9 +47,12 @@ export function createProfileStore(
   // and only trusted while the file's modification time is unchanged.
   let cache = null;
 
+  // Modification time alone is too coarse on some file systems (two writes in
+  // the same tick look identical), so the size is part of the fingerprint.
   function mtimeOf() {
     try {
-      return statSync(file).mtimeMs;
+      const st = statSync(file);
+      return `${st.mtimeMs}:${st.size}`;
     } catch {
       return null;
     }

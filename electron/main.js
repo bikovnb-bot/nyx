@@ -12,7 +12,7 @@ import { connect as netConnect } from "node:net";
 import http from "node:http";
 import { parseVlessLink } from "../src/parseLink.js";
 import { buildSingBoxConfig, CLASH_API_ADDRESS } from "../src/configBuilder.js";
-import { runSingBox, getSingBoxVersion, findSingBoxBinary } from "../src/singbox.js";
+import { runSingBox, getSingBoxVersionAsync, findSingBoxBinary, findRulesDir } from "../src/singbox.js";
 import { createProfileStore } from "../src/profileStore.js";
 import { createSettingsStore } from "../src/settingsStore.js";
 import { isElevatedWindows, relaunchElevatedWindows } from "../src/elevate.js";
@@ -227,16 +227,33 @@ function disconnect() {
   broadcastState();
 }
 
+function markConnected(profile) {
+  if (activeProfileId !== profile.id || !connecting) return;
+  connecting = false;
+  connectedAt = Date.now();
+  broadcastState();
+}
+
 function connect(profile) {
   disconnect();
   userInitiatedDisconnect = false;
+
+  // Show "connecting" right away: the integrity hash and interface lookup below
+  // block this process for a moment.
+  connecting = true;
+  broadcastState();
+  const fail = () => {
+    connecting = false;
+    broadcastState();
+    return false;
+  };
 
   let parsed;
   try {
     parsed = parseVlessLink(profile.link);
   } catch (err) {
     notify("Плохая ссылка профиля", err.message);
-    return false;
+    return fail();
   }
 
   if (parsed.allowInsecure) {
@@ -254,7 +271,7 @@ function connect(profile) {
         "Файл sing-box.exe изменился с прошлого запуска этой версии Nyx. Подключение остановлено в целях безопасности."
       );
     }
-    return false;
+    return fail();
   }
 
   const settings = settingsStore().load();
@@ -264,6 +281,10 @@ function connect(profile) {
     interfaceName: TUN_INTERFACE_NAME,
     splitTunneling: settings.splitTunneling,
     defaultInterfaceName,
+    routing: settings.routing,
+    dns: settings.dns,
+    fragment: settings.fragment.enabled,
+    rulesDir: findRulesDir(),
   });
   const dir = mkdtempSync(path.join(tmpdir(), "vlessvpn-"));
   const configPath = path.join(dir, "config.json");
@@ -274,6 +295,7 @@ function connect(profile) {
   child = runSingBox(configPath, {
     onLog: (line) => {
       log("[sing-box]", line.trim());
+      if (/sing-box started/i.test(line)) markConnected(profile);
       if (/FATAL/i.test(line)) {
         notify("Ошибка подключения", line.trim().slice(0, 200));
       }
@@ -312,13 +334,9 @@ function connect(profile) {
   notify("Подключение", profile.name);
   startTrafficPolling(profile.id);
 
-  setTimeout(() => {
-    if (activeProfileId === profile.id) {
-      connecting = false;
-      connectedAt = Date.now();
-      broadcastState();
-    }
-  }, 2000);
+  // Normally "connected" is shown as soon as sing-box reports it started; the
+  // timer only covers a log line that never comes.
+  setTimeout(() => markConnected(profile), 5000);
 
   // A tunnel that is still up after a few seconds counts as a real
   // connection; that ends an auto-reconnect sequence.
@@ -649,6 +667,13 @@ function persistWindowBounds() {
   }, 600);
 }
 
+function openSettingsWindow() {
+  openMainWindow();
+  const send = () => mainWindow?.webContents.send("open-settings");
+  if (mainWindow.webContents.isLoading()) mainWindow.webContents.once("did-finish-load", send);
+  else send();
+}
+
 function openMainWindow() {
   if (mainWindow) {
     mainWindow.show();
@@ -792,12 +817,6 @@ ipcMain.handle("dismiss-hint", (_evt, name) => {
   if (name === "trayShown") applySettings({ hints: { trayShown: true } });
 });
 
-ipcMain.handle("ping-profile", (_evt, id) => {
-  const profile = profileStore().load().find((p) => p.id === id);
-  if (!profile) return { ok: false };
-  return pingProfile(profile);
-});
-
 ipcMain.handle("copy-link", (_evt, id) => {
   const profile = profileStore().load().find((p) => p.id === id);
   if (profile) clipboard.writeText(profile.link);
@@ -893,14 +912,23 @@ ipcMain.handle("open-log", () => shell.showItemInFolder(getLogFile()));
 
 ipcMain.handle("quit", () => app.quit());
 
-ipcMain.handle("get-app-info", () => ({
+let singboxVersionPromise = null;
+function loadSingBoxVersion() {
+  singboxVersionPromise ??= getSingBoxVersionAsync().then((v) => {
+    if (v === null) singboxVersionPromise = null; // try again next time
+    return v;
+  });
+  return singboxVersionPromise;
+}
+
+ipcMain.handle("get-app-info", async () => ({
   name: "Nyx",
   version: app.getVersion(),
   author: "Balamut",
   electron: process.versions.electron,
   chrome: process.versions.chrome,
   node: process.versions.node,
-  singboxVersion: getSingBoxVersion(),
+  singboxVersion: await loadSingBoxVersion(),
 }));
 
 // Real round-trip through the tunnel (Clash API asks the "proxy" outbound to
@@ -944,9 +972,11 @@ function buildTrayMenu() {
   const settings = settingsStore().load();
   const profiles = sortWithFavorites(profileStore().load(), settings.favorites);
   const active = profiles.find((p) => p.id === activeProfileId);
-  const codeTag = (p) => {
+  const flagIcon = (p) => {
     const c = profileCountryCode(p);
-    return c ? `[${c.toUpperCase()}] ` : "";
+    if (!c) return undefined;
+    const img = nativeImage.createFromPath(path.join(__dirname, "assets", "flags-png", `${c}.png`));
+    return img.isEmpty() ? undefined : img.resize({ width: 20, height: 15 });
   };
 
   const header = active
@@ -958,7 +988,8 @@ function buildTrayMenu() {
         : "Отключено";
 
   const profileItems = profiles.map((p) => ({
-    label: `${settings.favorites.includes(p.id) ? "★ " : ""}${codeTag(p)}${p.name}`,
+    label: `${settings.favorites.includes(p.id) ? "★ " : ""}${p.name}`,
+    icon: flagIcon(p),
     type: "radio",
     checked: p.id === activeProfileId,
     click: () => {
@@ -1001,6 +1032,7 @@ function buildTrayMenu() {
       click: (item) => applySettings({ killSwitchEnabled: item.checked }),
     },
     { label: "Открыть Nyx", click: openMainWindow },
+    { label: "Настройки", click: openSettingsWindow },
     { label: "Выход", click: () => app.quit() },
   ]);
 }
@@ -1041,6 +1073,7 @@ app.whenReady().then(() => {
     return;
   }
   log("app ready, tray starting");
+  loadSingBoxVersion();
   if (killswitch.isEngaged(userDataDir())) {
     log("[killswitch] stale engaged state found at startup, restoring network");
     killswitch.restore(userDataDir(), log);

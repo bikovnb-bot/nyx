@@ -11,6 +11,7 @@ import { createSubscriptionStore } from "./subscriptionStore.js";
 import { createProfileStore } from "./profileStore.js";
 import { createSettingsStore, mergeSettings } from "./settingsStore.js";
 import { qrSvg } from "./qr.js";
+import { parseSingBoxVersion } from "./singbox.js";
 
 function withTempDir(fn) {
   const dir = mkdtempSync(path.join(tmpdir(), "nyx-new-test-"));
@@ -218,3 +219,10 @@ test("callers cannot corrupt the cache by mutating a loaded list", () =>
     store.load().push({ id: "ghost" });
     assert.equal(store.load().length, 1);
   }));
+
+test("sing-box version output is parsed, with a sane fallback", () => {
+  assert.equal(parseSingBoxVersion("sing-box version 1.14.3\n\nEnvironment: go1.26"), "1.14.3");
+  assert.equal(parseSingBoxVersion("something unexpected\nsecond line"), "something unexpected");
+  assert.equal(parseSingBoxVersion(""), null);
+  assert.equal(parseSingBoxVersion(undefined), null);
+});

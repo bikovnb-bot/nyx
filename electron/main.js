@@ -290,6 +290,12 @@ function connect(profile) {
   const configPath = path.join(dir, "config.json");
   writeFileSync(configPath, JSON.stringify(config, null, 2));
 
+  log(
+    "options: TLS fragment", settings.fragment.enabled ? "on" : "off",
+    "| RU direct", settings.routing.directRu ? "on" : "off",
+    "| ad block", settings.routing.blockAds ? "on" : "off",
+    "| DNS", settings.dns.provider
+  );
   log("connecting to", profile.name, redactVlessLink(profile.link), "config:", configPath);
 
   child = runSingBox(configPath, {

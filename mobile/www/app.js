@@ -25,12 +25,14 @@
     profiles: [],            // { id, name, link, subscriptionId? }
     favorites: [],
     lastProfileId: null,
+    stats: { days: {}, profiles: {} },
     subscriptions: [],       // { id, url, name, updatedAt }
     settings: {
       theme: "dark",
       dns: { provider: "cloudflare", custom: "" },
       routing: { directRu: false, blockAds: false },
       fragment: false,
+      autoBest: false,
       apps: { mode: "all", exclude: [], include: [] },
     },
   };
@@ -90,6 +92,7 @@
       startedAt = 0;
       if (ticker) { clearInterval(ticker); ticker = null; }
     }
+    trafficOn(s === "started");
     if (s === "error") showIssue(error);
     else if (s === "starting" || s === "stopped") showIssue(null);
     renderSub(error);
@@ -212,7 +215,23 @@
   }
 
   // ------------------------------------------------------------------ connect
-  async function connect(id) {
+  // Picks the server with the shortest TCP connect time (measured outside the tunnel).
+  async function bestProfile() {
+    const targets = data.profiles.map((p) => {
+      try { const x = core.parseVlessLink(p.link); return { id: p.id, host: x.host, port: x.port }; } catch (e) { return null; }
+    }).filter(Boolean);
+    if (targets.length < 2) return null;
+    const res = (await vpn.pingServers({ targets })).results.filter((r) => r.ms != null).sort((a, b) => a.ms - b.ms);
+    return res.length ? { id: res[0].id, ms: res[0].ms } : null;
+  }
+
+  async function connect(id, auto) {
+    if (auto && data.settings.autoBest && vpn && state !== "starting") {
+      renderState("starting");
+      const best = await bestProfile();
+      if (best) { id = best.id; toast("Лучший сервер: " + best.ms + " мс", "success"); }
+      renderState("stopped");
+    }
     const profile = data.profiles.find((p) => p.id === id) || currentProfile();
     if (!profile) { openSheet("addSheet"); return; }
     if (!vpn) { toast("VPN-служба недоступна", "error"); return; }
@@ -231,6 +250,7 @@
       renderState("starting");
       await vpn.start({
         config: JSON.stringify(config),
+        name: profile.name,
         includePackages: s.apps.mode === "include" ? s.apps.include : [],
         excludePackages: s.apps.mode === "exclude" ? s.apps.exclude : [],
       });
@@ -250,7 +270,7 @@
 
   $("power").addEventListener("click", async () => {
     if (state === "started") { if (vpn) await vpn.stop(); return; }
-    connect(data.lastProfileId);
+    connect(data.lastProfileId, true);
   });
 
   // ------------------------------------------------------------------ sheets
@@ -341,6 +361,7 @@
     $("directRu").checked = s.routing.directRu;
     $("blockAds").checked = s.routing.blockAds;
     $("fragment").checked = s.fragment;
+    $("autoBest").checked = !!s.autoBest;
     const list = s.apps.mode === "include" ? s.apps.include : s.apps.exclude;
     $("pickApps").hidden = s.apps.mode === "all";
     $("appCount").textContent = String(list.length);
@@ -369,6 +390,7 @@
   });
   $("directRu").addEventListener("change", (e) => { data.settings.routing.directRu = e.target.checked; changed(); });
   $("blockAds").addEventListener("change", (e) => { data.settings.routing.blockAds = e.target.checked; changed(); });
+  $("autoBest").addEventListener("change", (e) => { data.settings.autoBest = e.target.checked; save(); });
   $("fragment").addEventListener("change", (e) => { data.settings.fragment = e.target.checked; changed(); });
   $("appModeSeg").addEventListener("click", (e) => {
     const b = e.target.closest("button");
@@ -399,8 +421,9 @@
     const q = $("appSearch").value.trim().toLowerCase();
     $("appList").innerHTML = (appCache || [])
       .filter((a) => !q || a.label.toLowerCase().includes(q) || a.package.toLowerCase().includes(q))
-      .map((a) => `<label class="app-row"><span><b>${esc(a.label)}</b><small>${esc(a.package)}</small></span><input type="checkbox" data-pkg="${esc(a.package)}" ${chosen.has(a.package) ? "checked" : ""} /></label>`)
+      .map((a) => `<label class="app-row"><span class="l"><img class="ico" data-pkg="${esc(a.package)}" alt="" /><span><b>${esc(a.label)}</b><small>${esc(a.package)}</small></span></span><input type="checkbox" data-pkg="${esc(a.package)}" ${chosen.has(a.package) ? "checked" : ""} /></label>`)
       .join("");
+    observeIcons();
   }
   $("appSearch").addEventListener("input", renderApps);
   $("appList").addEventListener("change", (e) => {
@@ -488,6 +511,177 @@
     scanRaf = requestAnimationFrame(tick);
   }
   $("scanClose").addEventListener("click", stopScan);
+
+  // ------------------------------------------------------------------ traffic and statistics
+  // The core exposes its counters on a loopback HTTP port (Clash API); the totals
+  // are polled once a second and turned into a speed, per-day and per-server sums.
+  const CLASH = "http://127.0.0.1:9095/connections";
+  let lastTotals = null;
+  let pollTimer = null;
+  let sessionBytes = 0;
+
+  const fmtBytes = (n) => {
+    const u = ["Б", "КБ", "МБ", "ГБ", "ТБ"];
+    let i = 0;
+    while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+    return (n >= 100 || i === 0 ? Math.round(n) : n.toFixed(1)) + " " + u[i];
+  };
+  const dayKey = (d = new Date()) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+
+  async function pollTraffic() {
+    try {
+      const r = await fetch(CLASH);
+      const j = await r.json();
+      const down = j.downloadTotal || 0, up = j.uploadTotal || 0;
+      if (lastTotals) {
+        const dd = Math.max(0, down - lastTotals.down), du = Math.max(0, up - lastTotals.up);
+        $("trDown").textContent = "↓ " + fmtBytes(dd) + "/с";
+        $("trUp").textContent = "↑ " + fmtBytes(du) + "/с";
+        sessionBytes += dd + du;
+        $("trTotal").textContent = "Σ " + fmtBytes(sessionBytes);
+        const day = (data.stats.days[dayKey()] = data.stats.days[dayKey()] || { up: 0, down: 0 });
+        day.down += dd; day.up += du;
+        const pid = data.lastProfileId;
+        if (pid) {
+          const pr = (data.stats.profiles[pid] = data.stats.profiles[pid] || { up: 0, down: 0 });
+          pr.down += dd; pr.up += du;
+        }
+        statsDirty = true;
+      }
+      lastTotals = { down, up };
+    } catch (e) { /* core not ready yet */ }
+  }
+  let statsDirty = false;
+  setInterval(() => {
+    if (statsDirty) {
+      // keep ~90 days
+      const keys = Object.keys(data.stats.days).sort();
+      while (keys.length > 90) delete data.stats.days[keys.shift()];
+      save();
+      statsDirty = false;
+    }
+  }, 10000);
+
+  function trafficOn(on) {
+    $("traffic").hidden = !on;
+    if (on && !pollTimer) { lastTotals = null; sessionBytes = 0; pollTimer = setInterval(pollTraffic, 1000); }
+    if (!on && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  let statsDays = 7;
+  function renderStats() {
+    const days = [];
+    for (let i = statsDays - 1; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      const v = data.stats.days[dayKey(d)] || { up: 0, down: 0 };
+      days.push({ label: d.getDate(), up: v.up, down: v.down });
+    }
+    const totalUp = days.reduce((a, d) => a + d.up, 0), totalDown = days.reduce((a, d) => a + d.down, 0);
+    $("statsTotals").innerHTML = `<span class="d">↓ ${fmtBytes(totalDown)}</span><span class="u">↑ ${fmtBytes(totalUp)}</span>`;
+    const max = Math.max(1, ...days.map((d) => d.up + d.down));
+    $("statsChart").innerHTML = days.map((d) => `<div class="col" title="${d.label}"><i class="u" style="height:${(d.up / max) * 100}%"></i><i class="d" style="height:${(d.down / max) * 100}%"></i></div>`).join("");
+    const names = Object.fromEntries(data.profiles.map((p) => [p.id, p.name]));
+    const rows = Object.entries(data.stats.profiles).map(([id, v]) => ({ name: names[id] || "удалённый сервер", total: v.up + v.down, up: v.up, down: v.down })).sort((a, b) => b.total - a.total);
+    $("statsProfiles").innerHTML = rows.length
+      ? rows.map((r) => `<div class="prof-row"><span>${esc(r.name)}</span><span>${fmtBytes(r.total)} <small>↓${fmtBytes(r.down)} ↑${fmtBytes(r.up)}</small></span></div>`).join("")
+      : '<p class="dim">Данных пока нет: статистика копится, пока VPN включён.</p>';
+  }
+  $("openStats").addEventListener("click", () => { renderStats(); openScreen("statsScreen"); });
+  $("closeStats").addEventListener("click", () => closeScreen("statsScreen"));
+  $("statsPeriod").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    statsDays = Number(b.dataset.days);
+    document.querySelectorAll("#statsPeriod button").forEach((x) => x.classList.toggle("active", x === b));
+    renderStats();
+  });
+
+  // ------------------------------------------------------------------ leak check
+  async function runLeakCheck() {
+    const body = $("leakBody");
+    body.innerHTML = '<p class="dim">Проверяю…</p>';
+    $("leakAgain").disabled = true;
+    let info = null;
+    try {
+      const r = await fetch(core.IP_INFO_URL);
+      info = core.parseIpInfo(await r.json());
+    } catch (e) { /* offline */ }
+    $("leakAgain").disabled = false;
+    const connected = state === "started";
+    const p = currentProfile();
+    let serverHost = null;
+    try { serverHost = p ? core.parseVlessLink(p.link).host : null; } catch (e) {}
+    let realIp = null;
+    try { realIp = localStorage.getItem("nyx.realIp"); } catch (e) {}
+    const verdict = core.leakVerdict({ connected, info, serverHost, realIp });
+    if (info && !connected) { try { localStorage.setItem("nyx.realIp", info.ip); } catch (e) {} }
+    const row = (k, v) => `<div class="r"><span>${esc(k)}</span><span>${esc(v || "—")}</span></div>`;
+    body.innerHTML = row("VPN", connected ? "включён" + (p ? " · " + p.name : "") : "выключен") +
+      row("Внешний IP", info && info.ip) +
+      row("Страна", info && [info.country, info.city].filter(Boolean).join(", ")) +
+      row("Провайдер", info && info.isp) +
+      `<div class="verdict ${esc(verdict.level)}">${esc(verdict.text)}</div>` +
+      `<p class="dim" style="margin-top:8px;font-size:11.5px">${esc(core.describeDns(data.settings))}</p>`;
+  }
+  $("openLeak").addEventListener("click", () => { openSheet("leakSheet"); runLeakCheck(); });
+  $("leakAgain").addEventListener("click", runLeakCheck);
+  $("leakClose").addEventListener("click", closeSheets);
+
+  // ------------------------------------------------------------------ speed test
+  let speedRunning = false;
+  let speedAbort = null;
+  const PHASE = { ping: ["Измеряю задержку…", 12], download: ["Измеряю загрузку…", 45], upload: ["Измеряю отдачу…", 80], done: ["Готово", 100] };
+  const fmtRate = (v) => (v == null ? "—" : v >= 100 ? String(Math.round(v)) : v.toFixed(1));
+  function renderSpeed(u) {
+    $("spPing").textContent = u.ping == null ? "—" : Math.round(u.ping);
+    $("spJitter").textContent = u.jitter == null ? "мс" : "мс ± " + u.jitter.toFixed(1);
+    $("spDown").textContent = fmtRate(u.down);
+    $("spUp").textContent = fmtRate(u.up);
+    const ph = PHASE[u.phase];
+    if (ph) { $("spStatus").textContent = ph[0]; $("spBar").style.width = ph[1] + "%"; }
+  }
+  async function startSpeed() {
+    if (speedRunning) return;
+    speedRunning = true;
+    speedAbort = new AbortController();
+    $("spStart").disabled = true;
+    $("spPing").textContent = $("spDown").textContent = $("spUp").textContent = "—";
+    $("speedRoute").textContent = state === "started" ? "Через VPN" : "Без VPN: напрямую через ваше соединение";
+    // The WebView's own fetch can stream the body; the native-HTTP replacement cannot.
+    const webFetch = window.CapacitorWebFetch || window.fetch.bind(window);
+    const fetchFn = (url, init) => webFetch(url, { ...init, signal: speedAbort.signal, cache: "no-store" });
+    try {
+      const r = await core.runSpeedtest(fetchFn, { onUpdate: renderSpeed, isCancelled: () => speedAbort.signal.aborted });
+      if (r.cancelled) $("spStatus").textContent = "Остановлено";
+    } catch (e) {
+      $("spStatus").textContent = speedAbort.signal.aborted ? "Остановлено" : "Нет связи с сервером теста";
+      $("spBar").style.width = "0%";
+    }
+    speedRunning = false;
+    $("spStart").disabled = false;
+    $("spStart").textContent = "Повторить";
+  }
+  $("openSpeed").addEventListener("click", () => { openSheet("speedSheet"); startSpeed(); });
+  $("spStart").addEventListener("click", startSpeed);
+  $("spClose").addEventListener("click", () => { if (speedAbort) speedAbort.abort(); closeSheets(); });
+
+  // ------------------------------------------------------------------ app icons in the picker
+  const iconCache = {};
+  let iconObserver = null;
+  function observeIcons() {
+    if (iconObserver) iconObserver.disconnect();
+    iconObserver = new IntersectionObserver((entries) => {
+      for (const en of entries) {
+        if (!en.isIntersecting) continue;
+        const img = en.target;
+        iconObserver.unobserve(img);
+        const pkg = img.dataset.pkg;
+        if (iconCache[pkg]) { img.src = iconCache[pkg]; continue; }
+        vpn.appIcon({ package: pkg }).then((r) => { iconCache[pkg] = r.icon; img.src = r.icon; }).catch(() => {});
+      }
+    }, { root: $("appList"), rootMargin: "200px" });
+    document.querySelectorAll("#appList img.ico").forEach((img) => iconObserver.observe(img));
+  }
 
   // ------------------------------------------------------------------ boot
   applyTheme(data.settings.theme);

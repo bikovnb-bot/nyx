@@ -31,6 +31,7 @@
       </button>
       <div id="status">Отключено</div>
       <div id="sub"></div>
+      <div class="traffic" id="traffic" hidden><span id="trDown">↓ 0</span><span id="trUp">↑ 0</span><span id="trTotal">Σ 0</span></div>
       <div class="issue" id="issue" hidden><b id="issueTitle"></b><span id="issueHint"></span></div>
     </section>
 
@@ -90,6 +91,11 @@
     </div>
 
     <div class="group">
+      <div class="gh">Подключение</div>
+      <label class="sw"><span><b>Автовыбор лучшего сервера</b><small>Кнопка включения выберет самый быстрый сервер по времени отклика</small></span><input type="checkbox" id="autoBest" /><i></i></label>
+    </div>
+
+    <div class="group">
       <div class="gh">Маршрутизация и DNS</div>
       <label class="sw"><span><b>Сайты РФ напрямую</b><small>Банки, госуслуги, маркетплейсы и все .ru идут мимо VPN</small></span><input type="checkbox" id="directRu" /><i></i></label>
       <label class="sw"><span><b>Блокировка рекламы и трекеров</b><small>Блокируются рекламные домены</small></span><input type="checkbox" id="blockAds" /><i></i></label>
@@ -122,6 +128,13 @@
     </div>
 
     <div class="group">
+      <div class="gh">Диагностика</div>
+      <button class="btn wide" id="openStats">Статистика трафика</button>
+      <button class="btn wide" id="openLeak">Проверить утечки и внешний IP</button>
+      <button class="btn wide" id="openSpeed">Тест скорости</button>
+    </div>
+
+    <div class="group">
       <div class="gh">О программе</div>
       <p class="dim" id="aboutText"></p>
     </div>
@@ -136,6 +149,43 @@
   </header>
   <input id="appSearch" class="search" placeholder="Поиск приложения" />
   <div class="scroll" id="appList"></div>
+</div>
+
+<div class="sheet" id="leakSheet">
+  <div class="grab"></div>
+  <h3>Проверка утечек</h3>
+  <div id="leakBody" class="rows"></div>
+  <div class="row"><button class="btn" id="leakAgain">Проверить снова</button><button class="btn primary" id="leakClose">Закрыть</button></div>
+</div>
+
+<div class="sheet" id="speedSheet">
+  <div class="grab"></div>
+  <h3>Тест скорости</h3>
+  <div id="speedRoute" class="dim"></div>
+  <div class="tiles">
+    <div class="tile"><small>Задержка</small><b id="spPing">—</b><i id="spJitter">мс</i></div>
+    <div class="tile"><small class="g">Загрузка</small><b id="spDown">—</b><i>Мбит/с</i></div>
+    <div class="tile"><small class="p">Отдача</small><b id="spUp">—</b><i>Мбит/с</i></div>
+  </div>
+  <div class="bar"><div id="spBar"></div></div>
+  <div id="spStatus" class="dim">&nbsp;</div>
+  <p class="dim" style="font-size:11px">Замер идёт через Cloudflare и передаёт до 40 МБ данных.</p>
+  <div class="row"><button class="btn" id="spStart">Запустить</button><button class="btn primary" id="spClose">Закрыть</button></div>
+</div>
+
+<div class="screen" id="statsScreen">
+  <header>
+    <button class="icon-btn" id="closeStats" aria-label="Назад"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+    <span class="title">Статистика</span>
+    <span></span>
+  </header>
+  <div class="scroll">
+    <div class="seg" id="statsPeriod"><button data-days="7" class="active">7 дней</button><button data-days="30">30 дней</button></div>
+    <div id="statsTotals" class="totals"></div>
+    <div id="statsChart" class="chart"></div>
+    <div class="gh" style="margin:16px 4px 6px">По серверам</div>
+    <div id="statsProfiles"></div>
+  </div>
 </div>
 
 <div class="screen" id="scanner">

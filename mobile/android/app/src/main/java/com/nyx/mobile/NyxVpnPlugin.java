@@ -51,6 +51,8 @@ public class NyxVpnPlugin extends Plugin {
             return;
         }
         NyxVpnService.pendingConfig = config;
+        String name = call.getString("name");
+        NyxVpnService.pendingName = name == null ? "Nyx" : name;
         NyxVpnService.pendingInclude = toList(call.getArray("includePackages"));
         NyxVpnService.pendingExclude = toList(call.getArray("excludePackages"));
         Intent prepare = VpnService.prepare(getContext());
@@ -135,6 +137,69 @@ public class NyxVpnPlugin extends Plugin {
         JSObject res = new JSObject();
         res.put("apps", apps);
         call.resolve(res);
+    }
+
+    /** TCP connect time to each server, measured outside the tunnel, for auto-select. */
+    @PluginMethod
+    public void pingServers(PluginCall call) {
+        final JSArray targets = call.getArray("targets");
+        new Thread(() -> {
+            JSArray out = new JSArray();
+            try {
+                java.util.List<Thread> threads = new java.util.ArrayList<>();
+                final java.util.concurrent.ConcurrentHashMap<String, Long> results = new java.util.concurrent.ConcurrentHashMap<>();
+                final java.util.List<String> ids = new java.util.ArrayList<>();
+                for (int i = 0; targets != null && i < targets.length(); i++) {
+                    org.json.JSONObject t = targets.getJSONObject(i);
+                    final String id = t.getString("id");
+                    final String host = t.getString("host");
+                    final int port = t.getInt("port");
+                    ids.add(id);
+                    Thread th = new Thread(() -> {
+                        long t0 = System.nanoTime();
+                        try (java.net.Socket s = new java.net.Socket()) {
+                            s.connect(new java.net.InetSocketAddress(host, port), 3000);
+                            results.put(id, (System.nanoTime() - t0) / 1_000_000);
+                        } catch (Exception ignored) {
+                        }
+                    });
+                    th.start();
+                    threads.add(th);
+                }
+                for (Thread th : threads) th.join(3500);
+                for (String id : ids) {
+                    JSObject r = new JSObject();
+                    r.put("id", id);
+                    Long ms = results.get(id);
+                    r.put("ms", ms == null ? org.json.JSONObject.NULL : ms);
+                    out.put(r);
+                }
+            } catch (Exception ignored) {
+            }
+            JSObject res = new JSObject();
+            res.put("results", out);
+            call.resolve(res);
+        }, "nyx-ping").start();
+    }
+
+    /** A small PNG (data URL) of an installed app's icon, for the app picker. */
+    @PluginMethod
+    public void appIcon(PluginCall call) {
+        String pkg = call.getString("package");
+        try {
+            android.graphics.drawable.Drawable d = getContext().getPackageManager().getApplicationIcon(pkg);
+            android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(64, 64, android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas c = new android.graphics.Canvas(bmp);
+            d.setBounds(0, 0, 64, 64);
+            d.draw(c);
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+            bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 90, bos);
+            JSObject res = new JSObject();
+            res.put("icon", "data:image/png;base64," + android.util.Base64.encodeToString(bos.toByteArray(), android.util.Base64.NO_WRAP));
+            call.resolve(res);
+        } catch (Exception e) {
+            call.reject("no icon");
+        }
     }
 
     @PluginMethod

@@ -214,6 +214,7 @@ public class NyxVpnService extends VpnService implements PlatformInterface, Comm
     // ------------------------------------------------------------------ notification
 
     private void showNotification(String text) {
+        String title = pendingName == null || pendingName.isEmpty() ? "Nyx" : pendingName;
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (Build.VERSION.SDK_INT >= 26) {
             nm.createNotificationChannel(new NotificationChannel(CHANNEL_ID, "VPN", NotificationManager.IMPORTANCE_LOW));
@@ -221,11 +222,15 @@ public class NyxVpnService extends VpnService implements PlatformInterface, Comm
         Intent open = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent pi = PendingIntent.getActivity(this, 0, open, PendingIntent.FLAG_IMMUTABLE);
         Notification.Builder b = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(this, CHANNEL_ID) : new Notification.Builder(this);
-        b.setSmallIcon(android.R.drawable.stat_sys_download_done)
-                .setContentTitle("Nyx")
-                .setContentText(text)
+        Intent stop = new Intent(this, NyxVpnService.class).setAction(ACTION_STOP);
+        PendingIntent stopIntent = PendingIntent.getService(this, 1, stop, PendingIntent.FLAG_IMMUTABLE);
+        b.setSmallIcon(R.drawable.ic_stat_nyx)
+                .setContentTitle("Nyx · " + text)
+                .setContentText(title)
                 .setContentIntent(pi)
-                .setOngoing(true);
+                .setOngoing(true)
+                .setShowWhen(false)
+                .addAction(new Notification.Action.Builder(null, "Отключить", stopIntent).build());
         Notification n = b.build();
         if (Build.VERSION.SDK_INT >= 29) {
             startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED);

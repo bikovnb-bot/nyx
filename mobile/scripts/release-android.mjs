@@ -85,5 +85,5 @@ if (publish) {
       "",
     ].join("\n")
   );
-  run("gh", ["release", "create", tag, `"${apk}"`, `"${apk}.sha256"`, "--repo", "bikovnb-bot/nyx", "--title", `"Nyx для Android ${version}"`, "--notes-file", `"${notesFile}"`]);
+  run("gh", ["release", "create", tag, `"${apk}"`, `"${apk}.sha256"`, "--repo", "bikovnb-bot/nyx", "--latest=false", "--title", `"Nyx для Android ${version}"`, "--notes-file", `"${notesFile}"`]);
 }

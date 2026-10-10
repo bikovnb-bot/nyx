@@ -183,3 +183,11 @@ FunctionEnd
 !macro customInstallMode
   StrCpy $isForceCurrentInstall "1"
 !macroend
+
+; Keep the name and version shown in Windows "Apps" current. The template writes
+; them on every install, but an in-place update was seen to leave the first
+; installed version (0.1.2) in place, so they are written again here.
+!macro customInstall
+  WriteRegStr SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" "DisplayName" "${UNINSTALL_DISPLAY_NAME}"
+  WriteRegStr SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" "DisplayVersion" "${VERSION}"
+!macroend

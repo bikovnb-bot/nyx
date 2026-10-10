@@ -149,6 +149,7 @@ public class NyxVpnService extends VpnService implements PlatformInterface, Comm
     private void clearSession() {
         //noinspection ResultOfMethodCallIgnored
         sessionFile().delete();
+        NyxWatchdog.cancel(this);
     }
 
     @Override
@@ -212,6 +213,7 @@ public class NyxVpnService extends VpnService implements PlatformInterface, Comm
             commandServer.startOrReloadService(config, override);
             setState("started", null);
             showNotification("Подключено");
+            NyxWatchdog.schedule(this);
         } catch (Throwable t) {
             Log.e(TAG, "start failed", t);
             clearSession(); // do not loop on a configuration that cannot start

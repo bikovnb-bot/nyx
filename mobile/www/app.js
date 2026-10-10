@@ -365,7 +365,7 @@
     const list = s.apps.mode === "include" ? s.apps.include : s.apps.exclude;
     $("pickApps").hidden = s.apps.mode === "all";
     $("appCount").textContent = String(list.length);
-    $("aboutText").textContent = "Nyx для Android · ядро sing-box · лицензия GPL-3.0. Изменения вступают в силу при следующем подключении.";
+    $("aboutText").textContent = "Nyx для Android" + (appVersion ? " " + appVersion : "") + " · ядро sing-box · лицензия GPL-3.0. Изменения вступают в силу при следующем подключении.";
     renderSubs();
     refreshBattery();
   }
@@ -684,6 +684,84 @@
     document.querySelectorAll("#appList img.ico").forEach((img) => iconObserver.observe(img));
   }
 
+  // ------------------------------------------------------------------ backup
+  $("copyAll").addEventListener("click", async () => {
+    if (!data.profiles.length) { toast("Серверов нет", "error"); return; }
+    try { await clipWrite(data.profiles.map((p) => p.link).join("\n")); toast("Скопировано серверов: " + data.profiles.length, "success"); }
+    catch (e) { toast("Не удалось скопировать", "error"); }
+  });
+
+  // ------------------------------------------------------------------ app updates (GitHub releases tagged android-vX.Y.Z)
+  const RELEASES = "https://api.github.com/repos/bikovnb-bot/nyx/releases?per_page=20";
+  let appVersion = null;
+  let pendingUpdate = null;
+
+  const verParts = (v) => String(v).split(".").map((n) => parseInt(n, 10) || 0);
+  const isNewer = (a, b) => { const x = verParts(a), y = verParts(b); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
+
+  async function findUpdate() {
+    const base = (() => { try { return localStorage.getItem("nyxUpdateUrl"); } catch (e) { return null; } })();
+    const res = await fetch(base || RELEASES, { headers: { Accept: "application/vnd.github+json" } });
+    if (!res.ok) throw new Error("GitHub ответил " + res.status);
+    const list = await res.json();
+    let best = null;
+    for (const r of list) {
+      const m = /^android-v(\d+\.\d+\.\d+)$/.exec(r.tag_name || "");
+      if (!m || r.draft || r.prerelease) continue;
+      if (!best || isNewer(m[1], best.version)) best = { version: m[1], release: r };
+    }
+    if (!best || !isNewer(best.version, appVersion)) return null;
+    const apk = best.release.assets.find((a) => /-arm64\.apk$/.test(a.name));
+    const sum = best.release.assets.find((a) => /-arm64\.apk\.sha256$/.test(a.name));
+    if (!apk || !sum) return null;
+    const sha = (await (await fetch(sum.browser_download_url)).text()).trim().split(/\s+/)[0];
+    return { version: best.version, url: apk.browser_download_url, sha256: sha, size: apk.size };
+  }
+
+  async function checkForUpdate(manual) {
+    try {
+      if (!appVersion) appVersion = (await vpn.appInfo()).versionName;
+      const up = await findUpdate();
+      pendingUpdate = up;
+      const b = $("updateBanner");
+      if (up) {
+        $("updateTitle").textContent = "Доступна версия " + up.version;
+        $("updateSub").textContent = "Нажмите, чтобы скачать и установить (" + fmtBytes(up.size) + ")";
+        b.hidden = false;
+        if (manual) toast("Есть новая версия " + up.version, "success");
+      } else {
+        b.hidden = true;
+        if (manual) toast("У вас последняя версия", "success");
+      }
+      try { localStorage.setItem("nyxLastUpdateCheck", String(Date.now())); } catch (e) {}
+    } catch (e) {
+      if (manual) toast("Не удалось проверить обновления", "error");
+    }
+  }
+
+  async function installUpdate() {
+    const up = pendingUpdate;
+    if (!up) return;
+    const b = $("updateBanner");
+    b.disabled = true;
+    const sub = $("updateSub");
+    const handle = await vpn.addListener("download", (p) => { sub.textContent = "Скачиваю… " + (p.total ? Math.round((p.got / p.total) * 100) + "%" : fmtBytes(p.got)); });
+    try {
+      sub.textContent = "Скачиваю…";
+      const r = await vpn.downloadApk({ url: up.url, sha256: up.sha256 });
+      sub.textContent = "Открываю установщик…";
+      await vpn.installApk({ path: r.path });
+    } catch (e) {
+      if (String(e && e.message) === "permission") toast("Разрешите установку из этого приложения и нажмите ещё раз", "error", 5000);
+      else toast("Не удалось обновить: " + (e && e.message ? e.message : e), "error", 4500);
+    }
+    handle.remove();
+    b.disabled = false;
+    sub.textContent = "Нажмите, чтобы скачать и установить (" + fmtBytes(up.size) + ")";
+  }
+  $("updateBanner").addEventListener("click", installUpdate);
+  $("checkUpdate").addEventListener("click", () => checkForUpdate(true));
+
   // ------------------------------------------------------------------ background work
   async function refreshBattery() {
     try {
@@ -705,6 +783,13 @@
   applyTheme(data.settings.theme);
   renderList();
   renderSub();
+  if (vpn) {
+    vpn.appInfo().then((i) => { appVersion = i.versionName; }).catch(() => {});
+    // look for a new version at most once a day, quietly
+    let last = 0;
+    try { last = Number(localStorage.getItem("nyxLastUpdateCheck") || 0); } catch (e) {}
+    if (Date.now() - last > 24 * 3600 * 1000) setTimeout(() => checkForUpdate(false), 3000);
+  }
   if (vpn) {
     vpn.addListener("status", (e) => renderState(e.state, e.error));
     vpn.status().then((e) => renderState(e.state, e.error));

@@ -175,3 +175,7 @@ body[data-state="error"] #status { color: var(--danger); }
 :root[data-theme="light"] .seg { background: #EEF2F7; }
 :root[data-theme="light"] .seg button.active { background: #fff; color: var(--text-strong); box-shadow: 0 1px 3px rgba(15,23,42,.15), inset 0 0 0 1px rgba(124,58,237,.35); }
 :root[data-theme="light"] .toast { background: #0F172A; }
+
+.update { margin-top: 12px; width: 100%; max-width: 360px; padding: 11px 14px; border-radius: 14px; text-align: left; background: rgba(139,92,246,.14); border: 1px solid rgba(139,92,246,.5); }
+.update b { display: block; font-size: 14px; color: var(--text-strong); }
+.update span { font-size: 12px; color: var(--muted); }

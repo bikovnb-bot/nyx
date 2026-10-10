@@ -1,12 +1,13 @@
 {
   "name": "nyx-mobile",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "license": "GPL-3.0-or-later",
   "description": "Nyx for Android (Capacitor shell around the Nyx web UI and sing-box libbox)",
   "type": "module",
   "scripts": {
-    "bundle": "node scripts/bundle.mjs"
+    "bundle": "node scripts/bundle.mjs",
+    "release:android": "node scripts/release-android.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",

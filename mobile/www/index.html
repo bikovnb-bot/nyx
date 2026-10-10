@@ -32,6 +32,7 @@
       <div id="status">Отключено</div>
       <div id="sub"></div>
       <div class="traffic" id="traffic" hidden><span id="trDown">↓ 0</span><span id="trUp">↑ 0</span><span id="trTotal">Σ 0</span></div>
+      <button class="update" id="updateBanner" hidden><b id="updateTitle"></b><span id="updateSub"></span></button>
       <div class="issue" id="issue" hidden><b id="issueTitle"></b><span id="issueHint"></span></div>
     </section>
 
@@ -142,8 +143,15 @@
     </div>
 
     <div class="group">
+      <div class="gh">Резервная копия</div>
+      <button class="btn wide" id="copyAll">Скопировать все серверы</button>
+      <p class="dim">Ссылки всех серверов копируются в буфер: вставьте их кнопкой «+» на другом телефоне или после переустановки.</p>
+    </div>
+
+    <div class="group">
       <div class="gh">О программе</div>
       <p class="dim" id="aboutText"></p>
+      <button class="btn wide" id="checkUpdate">Проверить обновления</button>
     </div>
   </div>
 </div>

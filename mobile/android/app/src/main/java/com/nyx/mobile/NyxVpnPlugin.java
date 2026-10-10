@@ -253,6 +253,100 @@ public class NyxVpnPlugin extends Plugin {
         }
     }
 
+    /** Version of the installed app, and whether it may install APK files. */
+    @PluginMethod
+    public void appInfo(PluginCall call) {
+        try {
+            android.content.pm.PackageInfo pi = getContext().getPackageManager().getPackageInfo(getContext().getPackageName(), 0);
+            JSObject res = new JSObject();
+            res.put("versionName", pi.versionName);
+            res.put("versionCode", Build.VERSION.SDK_INT >= 28 ? pi.getLongVersionCode() : pi.versionCode);
+            res.put("canInstall", Build.VERSION.SDK_INT < 26 || getContext().getPackageManager().canRequestPackageInstalls());
+            call.resolve(res);
+        } catch (Exception e) {
+            call.reject("no info");
+        }
+    }
+
+    /** Downloads an update to the cache folder, checks its SHA-256 and reports progress. */
+    @PluginMethod
+    public void downloadApk(PluginCall call) {
+        final String url = call.getString("url");
+        final String sha256 = call.getString("sha256");
+        if (url == null || !(url.startsWith("https://") || url.startsWith("http://127.0.0.1")) || sha256 == null) {
+            call.reject("bad request");
+            return;
+        }
+        new Thread(() -> {
+            java.io.File dir = new java.io.File(getContext().getCacheDir(), "updates");
+            dir.mkdirs();
+            java.io.File[] old = dir.listFiles();
+            if (old != null) for (java.io.File f : old) f.delete();
+            java.io.File out = new java.io.File(dir, "nyx-update.apk");
+            try {
+                java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                c.setConnectTimeout(15000);
+                c.setReadTimeout(30000);
+                c.setInstanceFollowRedirects(true);
+                if (c.getResponseCode() != 200) throw new Exception("HTTP " + c.getResponseCode());
+                long total = c.getContentLengthLong();
+                java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+                long got = 0, lastReport = 0;
+                try (java.io.InputStream in = c.getInputStream(); java.io.FileOutputStream fos = new java.io.FileOutputStream(out)) {
+                    byte[] buf = new byte[65536];
+                    int n;
+                    while ((n = in.read(buf)) > 0) {
+                        fos.write(buf, 0, n);
+                        md.update(buf, 0, n);
+                        got += n;
+                        if (got - lastReport > 512 * 1024) {
+                            lastReport = got;
+                            JSObject p = new JSObject();
+                            p.put("got", got);
+                            p.put("total", total);
+                            notifyListeners("download", p);
+                        }
+                    }
+                }
+                StringBuilder hex = new StringBuilder();
+                for (byte b : md.digest()) hex.append(String.format("%02x", b));
+                if (!hex.toString().equalsIgnoreCase(sha256.trim())) {
+                    out.delete();
+                    throw new Exception("checksum mismatch");
+                }
+                JSObject res = new JSObject();
+                res.put("path", out.getAbsolutePath());
+                call.resolve(res);
+            } catch (Exception e) {
+                out.delete();
+                call.reject(String.valueOf(e.getMessage()));
+            }
+        }, "nyx-download").start();
+    }
+
+    /** Hands a downloaded APK to the system installer. */
+    @PluginMethod
+    public void installApk(PluginCall call) {
+        String path = call.getString("path");
+        try {
+            if (Build.VERSION.SDK_INT >= 26 && !getContext().getPackageManager().canRequestPackageInstalls()) {
+                Intent settings = new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        android.net.Uri.parse("package:" + getContext().getPackageName())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(settings);
+                call.reject("permission");
+                return;
+            }
+            java.io.File apk = new java.io.File(path);
+            android.net.Uri uri = androidx.core.content.FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", apk);
+            Intent i = new Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(i);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject(String.valueOf(e.getMessage()));
+        }
+    }
+
     @PluginMethod
     public void stop(PluginCall call) {
         Intent intent = new Intent(getContext(), NyxVpnService.class).setAction(NyxVpnService.ACTION_STOP);

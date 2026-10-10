@@ -1,5 +1,15 @@
 apply plugin: 'com.android.application'
 
+// The app version comes from mobile/package.json (one place to bump).
+def pkg = new groovy.json.JsonSlurper().parse(file('../../package.json'))
+def (vMajor, vMinor, vPatch) = pkg.version.tokenize('.').collect { it.toInteger() }
+
+// Release signing: a properties file outside the repository
+// (storeFile, storePassword, keyAlias, keyPassword), named by NYX_SIGNING_PROPERTIES.
+def signingProps = new Properties()
+def signingFile = System.getenv('NYX_SIGNING_PROPERTIES') ? file(System.getenv('NYX_SIGNING_PROPERTIES')) : null
+if (signingFile != null && signingFile.exists()) signingFile.withReader { signingProps.load(it) }
+
 android {
     namespace = "com.nyx.mobile"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,10 +17,9 @@ android {
         applicationId "com.nyx.mobile"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode vMajor * 10000 + vMinor * 100 + vPatch
+        versionName pkg.version
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        ndk { abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64' }
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
@@ -21,8 +30,24 @@ android {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
     }
-    buildTypes {
+    signingConfigs {
         release {
+            if (signingProps.getProperty('storeFile')) {
+                storeFile file(signingProps.getProperty('storeFile'))
+                storePassword signingProps.getProperty('storePassword')
+                keyAlias signingProps.getProperty('keyAlias')
+                keyPassword signingProps.getProperty('keyPassword')
+            }
+        }
+    }
+    buildTypes {
+        debug {
+            ndk { abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64' }
+        }
+        release {
+            if (signingProps.getProperty('storeFile')) signingConfig signingConfigs.release
+            // modern phones only: keeps the APK around 60 MB instead of 180
+            ndk { abiFilters 'arm64-v8a' }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

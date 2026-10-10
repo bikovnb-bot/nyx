@@ -129,6 +129,8 @@ test("returns an empty list if decryption fails, without crashing", () => {
     };
     const store = createProfileStore(dir, { crypto: brokenCrypto });
     store.add({ name: "Test", link: "vless://uuid@host:443" });
-    assert.deepEqual(store.load(), []);
+    // a fresh instance (as after an app restart) has no in-memory copy to fall back on
+    const reopened = createProfileStore(dir, { crypto: brokenCrypto });
+    assert.deepEqual(reopened.load(), []);
   });
 });

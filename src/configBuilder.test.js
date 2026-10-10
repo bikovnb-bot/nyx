@@ -39,6 +39,18 @@ test("adds no split-tunneling rules when disabled or unset", () => {
   assert.ok(!config.route.rules.some((r) => r.domain_suffix || r.process_name));
 });
 
+test("excludes the physical interface from TUN capture when provided", () => {
+  const profile = parseVlessLink("vless://uuid@host:443");
+  const config = buildSingBoxConfig(profile, { defaultInterfaceName: "Ethernet" });
+  assert.deepEqual(config.inbounds[0].exclude_interface, ["Ethernet"]);
+});
+
+test("leaves exclude_interface unset when no default interface is known", () => {
+  const profile = parseVlessLink("vless://uuid@host:443");
+  const config = buildSingBoxConfig(profile);
+  assert.equal(config.inbounds[0].exclude_interface, undefined);
+});
+
 test("routes listed domains and processes directly when split tunneling is enabled", () => {
   const profile = parseVlessLink("vless://uuid@host:443");
   const config = buildSingBoxConfig(profile, {

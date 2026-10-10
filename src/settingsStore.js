@@ -11,27 +11,51 @@ const DEFAULT_SETTINGS = {
     // bypass the VPN and go out directly.
     processes: [],
   },
+  // Connect to the fastest server (by TCP ping) instead of the last used one.
+  autoBest: { enabled: false },
+  // If the tunnel drops, try the same profile again, then a fallback.
+  // fallbackProfileId: "auto" = best available by ping, or a profile id.
+  autoReconnect: { enabled: false, fallbackProfileId: "auto" },
+  subscriptionsAutoUpdate: true,
+  lastProfileId: null,
+  favorites: [],
+  // { x, y, width, height, maximized } remembered between launches.
+  window: null,
+  hints: { trayShown: false },
 };
 
 export function settingsStorePath(userDataDir) {
   return path.join(userDataDir, "settings.json");
 }
 
+function isPlainObject(v) {
+  return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+
+// One level of nesting is merged (so {splitTunneling:{enabled:true}} keeps the
+// domain list); everything else, including arrays, is replaced.
+export function mergeSettings(base, patch) {
+  const out = { ...base };
+  for (const [key, value] of Object.entries(patch || {})) {
+    out[key] = isPlainObject(value) && isPlainObject(base[key]) ? { ...base[key], ...value } : value;
+  }
+  return out;
+}
+
+function withDefaults(raw) {
+  return mergeSettings(structuredClone(DEFAULT_SETTINGS), raw);
+}
+
 export function createSettingsStore(userDataDir, logger = console.error) {
   const file = settingsStorePath(userDataDir);
 
   function load() {
-    if (!existsSync(file)) return { ...DEFAULT_SETTINGS };
+    if (!existsSync(file)) return withDefaults({});
     try {
-      const raw = JSON.parse(readFileSync(file, "utf8"));
-      return {
-        ...DEFAULT_SETTINGS,
-        ...raw,
-        splitTunneling: { ...DEFAULT_SETTINGS.splitTunneling, ...(raw.splitTunneling || {}) },
-      };
+      return withDefaults(JSON.parse(readFileSync(file, "utf8")));
     } catch (err) {
       logger(`Failed to read settings from ${file}: ${err.message}`);
-      return { ...DEFAULT_SETTINGS };
+      return withDefaults({});
     }
   }
 
@@ -41,12 +65,7 @@ export function createSettingsStore(userDataDir, logger = console.error) {
   }
 
   function update(partial) {
-    const current = load();
-    const next = {
-      ...current,
-      ...partial,
-      splitTunneling: { ...current.splitTunneling, ...(partial.splitTunneling || {}) },
-    };
+    const next = mergeSettings(load(), partial);
     save(next);
     return next;
   }

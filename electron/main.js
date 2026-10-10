@@ -1,4 +1,4 @@
-import { app, Tray, Menu, nativeImage, BrowserWindow, ipcMain, Notification, shell, dialog, clipboard } from "electron";
+import { app, Tray, Menu, nativeImage, BrowserWindow, ipcMain, Notification, shell, dialog, clipboard, net, screen } from "electron";
 // electron-updater is CJS and only exposes autoUpdater via a lazy getter on
 // its default export — `import { autoUpdater }` fails to resolve under
 // Node's ESM/CJS interop and crashes the whole process before any code runs.
@@ -6,7 +6,7 @@ import electronUpdaterPkg from "electron-updater";
 const { autoUpdater } = electronUpdaterPkg;
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { writeFileSync, mkdtempSync, readFileSync } from "node:fs";
+import { writeFileSync, mkdtempSync, readFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { connect as netConnect } from "node:net";
 import http from "node:http";
@@ -15,17 +15,29 @@ import { buildSingBoxConfig, CLASH_API_ADDRESS } from "../src/configBuilder.js";
 import { runSingBox, getSingBoxVersion, findSingBoxBinary } from "../src/singbox.js";
 import { createProfileStore } from "../src/profileStore.js";
 import { createSettingsStore } from "../src/settingsStore.js";
-import { crescentMoonPng } from "../src/makeIcon.js";
 import { isElevatedWindows, relaunchElevatedWindows } from "../src/elevate.js";
 import { ensureRegistered as ensureElevationTaskRegistered, runViaTask } from "../src/scheduledTask.js";
 import { initLogger, log, getLogFile, getLogTail } from "../src/logger.js";
 import * as killswitch from "../src/killswitch.js";
 import { verifySingBoxBinary } from "../src/singboxIntegrity.js";
 import { redactVlessLink } from "../src/redact.js";
+import { getDefaultInterfaceName } from "../src/networkInterface.js";
+import { randomUUID } from "node:crypto";
+import { profileCountryCode } from "../src/country.js";
+import { createTrafficStats } from "../src/trafficStats.js";
+import { parseSubscription, planSubscriptionSync, linkKey } from "../src/subscription.js";
+import { createSubscriptionStore } from "../src/subscriptionStore.js";
+import { pickBest, buildReconnectPlan, sortWithFavorites } from "../src/selection.js";
+import { qrSvg } from "../src/qr.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-app.setName("Nyx");
+if (!app.isPackaged) {
+  app.setName("Nyx-Dev");
+  app.setPath("userData", process.env.NYX_USER_DATA || path.join(app.getPath("appData"), "Nyx-Dev"));
+} else {
+  app.setName("Nyx");
+}
 initLogger(app.getPath("userData"));
 log("app start, execPath=", process.execPath, "argv=", JSON.stringify(process.argv), "isPackaged=", app.isPackaged);
 
@@ -48,10 +60,32 @@ if (!gotSingleInstanceLock) {
   app.exit(0);
 }
 
-const startedElevated = isElevatedWindows();
+// Autostart at Windows login launches "Nyx.exe --hidden" so the app sits in
+// the tray quietly; a manual launch (shortcut, installer) opens the window.
+// The elevated relaunch below goes through a Scheduled Task that can't carry
+// arguments, so the unelevated launcher leaves a short-lived marker file for
+// the elevated instance instead.
+const HIDDEN_MARKER = path.join(app.getPath("userData"), "start-hidden.marker");
+
+function consumeHiddenMarker() {
+  try {
+    const age = Date.now() - Number(readFileSync(HIDDEN_MARKER, "utf8"));
+    unlinkSync(HIDDEN_MARKER);
+    return age >= 0 && age < 60000;
+  } catch {
+    return false;
+  }
+}
+
+const startedElevated = isElevatedWindows() || !app.isPackaged;
 
 if (!startedElevated) {
   log("not elevated, relaunching...");
+  if (process.argv.includes("--hidden")) {
+    try {
+      writeFileSync(HIDDEN_MARKER, String(Date.now()));
+    } catch {}
+  }
   // A packaged app can relaunch itself elevated via a pre-registered
   // Scheduled Task (see scheduledTask.js) with no UAC prompt at all — only
   // fall back to the classic Start-Process -Verb RunAs dance (which always
@@ -79,6 +113,8 @@ if (!startedElevated) {
   app.exit(0);
 }
 
+const startHidden = startedElevated && (process.argv.includes("--hidden") || consumeHiddenMarker());
+
 // We're elevated now (whether via the task above, a fresh UAC prompt, or
 // because the OS session itself is elevated). Make sure the task exists so
 // every later launch can skip the UAC prompt entirely.
@@ -96,23 +132,28 @@ let trafficReq = null;
 let trafficHistory = [];
 let trafficTotals = { up: 0, down: 0 };
 
-const ICON_DISCONNECTED = nativeImage.createFromBuffer(
-  crescentMoonPng(32, [140, 142, 158, 255], { stars: false })
-);
-const ICON_CONNECTED = nativeImage.createFromBuffer(
-  crescentMoonPng(32, [167, 139, 250, 255], {
-    dot: { offset: 10, radius: 5, color: [34, 197, 94, 255] },
-  })
-);
-const APP_ICON = nativeImage.createFromBuffer(crescentMoonPng(256, [167, 139, 250, 255]));
+const asset = (name) => nativeImage.createFromPath(path.join(__dirname, "assets", name));
+const ICON_DISCONNECTED = asset("tray-disconnected.png");
+const ICON_CONNECTED = asset("tray-connected.png");
+const APP_ICON = asset("app-icon-256.png");
 
 function userDataDir() {
   return app.getPath("userData");
 }
 
+let profileStoreInstance = null;
 function profileStore() {
-  return createProfileStore(userDataDir(), undefined, (...args) => log("[profileStore]", ...args));
+  profileStoreInstance ??= createProfileStore(userDataDir(), undefined, (...args) => log("[profileStore]", ...args));
+  return profileStoreInstance;
 }
+
+let subscriptionStoreInstance = null;
+function subscriptionStore() {
+  subscriptionStoreInstance ??= createSubscriptionStore(userDataDir(), { logger: (...args) => log("[subscriptions]", ...args) });
+  return subscriptionStoreInstance;
+}
+
+const trafficStats = createTrafficStats(app.getPath("userData"), { logger: (...args) => log("[stats]", ...args) });
 
 function settingsStore() {
   return createSettingsStore(userDataDir(), (...args) => log("[settingsStore]", ...args));
@@ -146,6 +187,7 @@ function startTrafficPolling(profileId, attempt = 0) {
         try {
           const { up = 0, down = 0 } = JSON.parse(line);
           trafficTotals = { up: trafficTotals.up + up, down: trafficTotals.down + down };
+          trafficStats.add(profileId, up, down);
           trafficHistory.push({ up, down });
           if (trafficHistory.length > 60) trafficHistory.shift();
           mainWindow?.webContents.send("traffic", { up, down, history: trafficHistory, totals: trafficTotals });
@@ -163,13 +205,17 @@ function startTrafficPolling(profileId, attempt = 0) {
   trafficReq = req;
 }
 
+let connectToken = 0;
+
 function disconnect() {
+  connectToken++;
   userInitiatedDisconnect = true;
   if (child) {
     child.kill();
     child = null;
   }
   resetTraffic();
+  trafficStats.flush();
   activeProfileId = null;
   connecting = false;
   connectedAt = null;
@@ -190,7 +236,7 @@ function connect(profile) {
     parsed = parseVlessLink(profile.link);
   } catch (err) {
     notify("Плохая ссылка профиля", err.message);
-    return;
+    return false;
   }
 
   if (parsed.allowInsecure) {
@@ -208,11 +254,17 @@ function connect(profile) {
         "Файл sing-box.exe изменился с прошлого запуска этой версии Nyx. Подключение остановлено в целях безопасности."
       );
     }
-    return;
+    return false;
   }
 
   const settings = settingsStore().load();
-  const config = buildSingBoxConfig(parsed, { interfaceName: TUN_INTERFACE_NAME, splitTunneling: settings.splitTunneling });
+  const defaultInterfaceName = getDefaultInterfaceName();
+  log("default network interface for split routing:", defaultInterfaceName);
+  const config = buildSingBoxConfig(parsed, {
+    interfaceName: TUN_INTERFACE_NAME,
+    splitTunneling: settings.splitTunneling,
+    defaultInterfaceName,
+  });
   const dir = mkdtempSync(path.join(tmpdir(), "vlessvpn-"));
   const configPath = path.join(dir, "config.json");
   writeFileSync(configPath, JSON.stringify(config, null, 2));
@@ -247,15 +299,7 @@ function connect(profile) {
       broadcastState();
       if (unexpected) {
         notify("Отключено", `sing-box завершился с кодом ${code}`);
-        if (settingsStore().load().killSwitchEnabled) {
-          log("[killswitch] engaging after unexpected sing-box exit");
-          killswitch.engage(userDataDir(), TUN_INTERFACE_NAME, log);
-          killSwitchActive = true;
-          notify(
-            "Kill switch активирован",
-            "Соединение оборвалось неожиданно — сеть заблокирована, чтобы избежать утечки трафика. Отключите kill switch или переподключитесь в настройках."
-          );
-        }
+        if (!handleUnexpectedDrop(profile)) engageKillSwitchIfEnabled();
       }
     }
   });
@@ -263,6 +307,7 @@ function connect(profile) {
   activeProfileId = profile.id;
   connecting = true;
   connectedAt = null;
+  settingsStore().update({ lastProfileId: profile.id });
   broadcastState();
   notify("Подключение", profile.name);
   startTrafficPolling(profile.id);
@@ -274,6 +319,16 @@ function connect(profile) {
       broadcastState();
     }
   }, 2000);
+
+  // A tunnel that is still up after a few seconds counts as a real
+  // connection; that ends an auto-reconnect sequence.
+  setTimeout(() => {
+    if (activeProfileId === profile.id && child && reconnect.active) {
+      cancelReconnect();
+      notify("Соединение восстановлено", profile.name);
+    }
+  }, 8000);
+  return true;
 }
 
 function pingProfile(profile) {
@@ -294,6 +349,196 @@ function pingProfile(profile) {
     socket.once("connect", () => finish(true));
     socket.once("timeout", () => finish(false));
     socket.once("error", () => finish(false));
+  });
+}
+
+async function pingAll(profiles) {
+  const entries = await Promise.all(profiles.map(async (p) => [p.id, await pingProfile(p)]));
+  return Object.fromEntries(entries);
+}
+
+function lastOrFirst(profiles) {
+  const id = settingsStore().load().lastProfileId;
+  return profiles.find((p) => p.id === id) || profiles[0] || null;
+}
+
+/* ---------- connecting: last used / fastest ---------- */
+
+async function connectBest() {
+  const profiles = profileStore().load();
+  if (!profiles.length) return;
+  disconnect();
+  const token = connectToken;
+  connecting = true;
+  broadcastState();
+  const pings = await pingAll(profiles);
+  if (token !== connectToken) return; // the user disconnected or chose something else meanwhile
+  connecting = false;
+  const best = pickBest(profiles, pings);
+  if (!best) {
+    notify("Автовыбор сервера", "Ни один сервер не ответил. Подключаюсь к последнему использованному.");
+    const fallback = lastOrFirst(profiles);
+    if (fallback) connect(fallback);
+    else broadcastState();
+    return;
+  }
+  notify("Автовыбор сервера", `${best.profile.name} — ${best.ms} мс`);
+  connect(best.profile);
+}
+
+function quickConnect() {
+  cancelReconnect();
+  const profiles = profileStore().load();
+  if (!profiles.length) return;
+  if (settingsStore().load().autoBest.enabled) connectBest();
+  else connect(lastOrFirst(profiles));
+}
+
+/* ---------- kill switch + auto-reconnect after an unexpected drop ---------- */
+
+function engageKillSwitchIfEnabled() {
+  if (!settingsStore().load().killSwitchEnabled) return;
+  log("[killswitch] engaging after unexpected sing-box exit");
+  killswitch.engage(userDataDir(), TUN_INTERFACE_NAME, log);
+  killSwitchActive = true;
+  notify(
+    "Kill switch активирован",
+    "Соединение оборвалось неожиданно: сеть заблокирована, чтобы трафик не утёк мимо VPN. Переподключитесь или отключите kill switch в настройках."
+  );
+  broadcastState();
+}
+
+const MAX_RECONNECT_ATTEMPTS = 3;
+let reconnect = { active: false, plan: null, made: 0 };
+
+function cancelReconnect() {
+  reconnect = { active: false, plan: null, made: 0 };
+}
+
+// Returns true if auto-reconnect has taken over. With the kill switch on, the
+// network is only blocked after every attempt has failed: blocking at once
+// would cut off the very connection the retries need.
+function handleUnexpectedDrop(lost) {
+  const cfg = settingsStore().load().autoReconnect;
+  if (!cfg.enabled) return false;
+  if (reconnect.active) {
+    attemptReconnect();
+    return true;
+  }
+  reconnect = { active: true, plan: null, made: 0 };
+  (async () => {
+    const profiles = profileStore().load();
+    const pings = await pingAll(profiles.filter((p) => p.id !== lost.id));
+    if (!reconnect.active) return;
+    reconnect.plan = buildReconnectPlan({ lostId: lost.id, fallbackId: cfg.fallbackProfileId, profiles, pings }).slice(
+      0,
+      MAX_RECONNECT_ATTEMPTS
+    );
+    attemptReconnect();
+  })();
+  return true;
+}
+
+function attemptReconnect() {
+  if (!reconnect.active || !reconnect.plan) return;
+  const id = reconnect.plan.shift();
+  const profile = id && profileStore().load().find((p) => p.id === id);
+  if (!profile) return giveUpReconnect();
+  reconnect.made++;
+  notify("Переподключение", `Попытка ${reconnect.made} из ${MAX_RECONNECT_ATTEMPTS}: ${profile.name}`);
+  const myAttempt = reconnect.made;
+  setTimeout(() => {
+    if (!reconnect.active || reconnect.made !== myAttempt) return;
+    if (!connect(profile)) attemptReconnect();
+  }, myAttempt === 1 ? 1500 : 500);
+}
+
+function giveUpReconnect() {
+  cancelReconnect();
+  notify("Не удалось переподключиться", "Все попытки исчерпаны.");
+  engageKillSwitchIfEnabled();
+}
+
+function applySettings(partial) {
+  const next = settingsStore().update(partial);
+  // Kill switch being turned off should immediately lift any active block.
+  if (!next.killSwitchEnabled && killSwitchActive) {
+    killswitch.restore(userDataDir(), log);
+    killSwitchActive = false;
+  }
+  broadcastState();
+  return next;
+}
+
+/* ---------- subscriptions ---------- */
+
+const MAX_SUBSCRIPTION_BYTES = 2 * 1024 * 1024;
+
+async function fetchSubscriptionText(url) {
+  const parsed = new URL(url);
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new Error("Нужна ссылка http:// или https://");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await net.fetch(url, { signal: controller.signal, headers: { "User-Agent": `Nyx/${app.getVersion()}` } });
+    if (!res.ok) throw new Error(`Сервер подписки ответил ${res.status}`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > MAX_SUBSCRIPTION_BYTES) throw new Error("Ответ подписки слишком большой");
+    return buf.toString("utf8");
+  } catch (err) {
+    if (err.name === "AbortError") throw new Error("Сервер подписки не ответил за 15 секунд");
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Loads the list once and saves it once: every store call goes through DPAPI.
+async function syncSubscription(sub) {
+  try {
+    const text = await fetchSubscriptionText(sub.url);
+    const { links, skipped } = parseSubscription(text);
+    if (!links.length) {
+      throw new Error(skipped ? "В подписке нет VLESS-ссылок (другие протоколы не поддерживаются)" : "Подписка пуста или формат не распознан");
+    }
+    const store = profileStore();
+    const all = store.load();
+    const mine = all.filter((x) => x.subscriptionId === sub.id);
+    const otherKeys = new Set(all.filter((x) => x.subscriptionId !== sub.id).map((x) => linkKey(x.link)));
+    const plan = planSubscriptionSync(mine, links, otherKeys);
+
+    let next = all.map((x) => {
+      const u = plan.toUpdate.find((c) => c.id === x.id);
+      return u ? { ...x, link: u.link } : x;
+    });
+    const removable = new Set(plan.toRemoveIds.filter((id) => id !== activeProfileId));
+    next = next.filter((x) => !removable.has(x.id));
+    for (const a of plan.toAdd) next.push({ id: randomUUID(), name: a.name, link: a.link, subscriptionId: sub.id });
+    store.save(next);
+
+    subscriptionStore().patch(sub.id, { updatedAt: Date.now(), count: links.length, error: null });
+    log("[subscriptions] synced", sub.name, `added=${plan.toAdd.length} updated=${plan.toUpdate.length} removed=${removable.size} skipped=${skipped}`);
+    return { ok: true, added: plan.toAdd.length, updated: plan.toUpdate.length, removed: removable.size, skipped };
+  } catch (err) {
+    log("[subscriptions] sync failed for", sub.name, "-", err.message);
+    subscriptionStore().patch(sub.id, { error: err.message });
+    return { ok: false, error: err.message };
+  } finally {
+    broadcastState();
+  }
+}
+
+async function refreshAllSubscriptions() {
+  for (const sub of subscriptionStore().list()) await syncSubscription(sub);
+}
+
+function publicSubscriptions() {
+  return subscriptionStore().list().map((x) => {
+    let host = "";
+    try {
+      host = new URL(x.url).hostname;
+    } catch {}
+    return { id: x.id, name: x.name, host, updatedAt: x.updatedAt, count: x.count, error: x.error };
   });
 }
 
@@ -346,6 +591,7 @@ function checkForUpdates() {
 }
 
 function getState() {
+  const settings = settingsStore().load();
   let profiles;
   try {
     profiles = profileStore().load();
@@ -353,15 +599,21 @@ function getState() {
     log("getState: profileStore().load() THREW:", err.stack || err.message);
     profiles = [];
   }
-  log("getState: userDataDir=", userDataDir(), "profiles.length=", profiles.length);
+  const favorites = new Set(settings.favorites);
+  profiles = sortWithFavorites(profiles, settings.favorites).map((p) => ({
+    ...p,
+    country: profileCountryCode(p),
+    favorite: favorites.has(p.id),
+  }));
   return {
     profiles,
     activeProfileId,
     connecting,
     connectedAt,
     autoStart: isAutoStartEnabled(),
-    settings: settingsStore().load(),
+    settings,
     killSwitchActive,
+    subscriptions: publicSubscriptions(),
   };
 }
 
@@ -370,17 +622,48 @@ function broadcastState() {
   mainWindow?.webContents.send("state", getState());
 }
 
+function restoredBounds() {
+  const w = settingsStore().load().window;
+  if (!w || !Number.isFinite(w.width) || !Number.isFinite(w.height)) return {};
+  const bounds = { width: Math.max(w.width, 960), height: Math.max(w.height, 600) };
+  if (Number.isFinite(w.x) && Number.isFinite(w.y)) {
+    const onScreen = screen.getAllDisplays().some((d) => {
+      const a = d.workArea;
+      return w.x + 100 > a.x && w.x < a.x + a.width - 100 && w.y + 50 > a.y && w.y < a.y + a.height - 50;
+    });
+    if (onScreen) {
+      bounds.x = w.x;
+      bounds.y = w.y;
+    }
+  }
+  return bounds;
+}
+
+let boundsTimer = null;
+function persistWindowBounds() {
+  clearTimeout(boundsTimer);
+  boundsTimer = setTimeout(() => {
+    if (!mainWindow || mainWindow.isMinimized()) return;
+    const b = mainWindow.getNormalBounds();
+    settingsStore().update({ window: { x: b.x, y: b.y, width: b.width, height: b.height, maximized: mainWindow.isMaximized() } });
+  }, 600);
+}
+
 function openMainWindow() {
   if (mainWindow) {
     mainWindow.show();
     mainWindow.focus();
     return;
   }
+  log("creating main window");
   mainWindow = new BrowserWindow({
-    width: 430,
-    height: 660,
-    resizable: false,
-    backgroundColor: "#14151b",
+    width: 1024,
+    height: 640,
+    ...restoredBounds(),
+    minWidth: 960,
+    minHeight: 600,
+    frame: false,
+    backgroundColor: "#0b0e14",
     title: "Nyx",
     icon: APP_ICON,
     autoHideMenuBar: true,
@@ -390,6 +673,8 @@ function openMainWindow() {
     },
   });
   mainWindow.setMenuBarVisibility(false);
+  if (settingsStore().load().window?.maximized) mainWindow.maximize();
+  for (const evt of ["resize", "move", "maximize", "unmaximize"]) mainWindow.on(evt, persistWindowBounds);
   mainWindow.loadFile(path.join(__dirname, "main-window.html"));
   mainWindow.on("close", (e) => {
     if (isQuitting) return;
@@ -397,6 +682,18 @@ function openMainWindow() {
     mainWindow.hide();
   });
 }
+
+ipcMain.handle("window-minimize", () => mainWindow?.minimize());
+ipcMain.handle("window-maximize", () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMaximized()) {
+    mainWindow.unmaximize();
+  } else {
+    mainWindow.maximize();
+  }
+});
+ipcMain.handle("window-close", () => mainWindow?.close());
+ipcMain.handle("window-is-maximized", () => mainWindow?.isMaximized() ?? false);
 
 ipcMain.handle("get-state", () => getState());
 
@@ -417,11 +714,83 @@ ipcMain.handle("edit-profile", (_evt, { id, name, link }) => {
 });
 
 ipcMain.handle("connect-profile", (_evt, id) => {
+  cancelReconnect();
   const profile = profileStore().load().find((p) => p.id === id);
   if (profile) connect(profile);
 });
 
-ipcMain.handle("disconnect", () => disconnect());
+ipcMain.handle("quick-connect", () => quickConnect());
+
+ipcMain.handle("connect-best", () => {
+  cancelReconnect();
+  return connectBest();
+});
+
+ipcMain.handle("disconnect", () => {
+  cancelReconnect();
+  disconnect();
+});
+
+ipcMain.handle("toggle-favorite", (_evt, id) => {
+  const favs = new Set(settingsStore().load().favorites);
+  if (favs.has(id)) favs.delete(id);
+  else favs.add(id);
+  applySettings({ favorites: [...favs] });
+});
+
+ipcMain.handle("get-profile-qr", (_evt, id) => {
+  const profile = profileStore().load().find((p) => p.id === id);
+  if (!profile) return { ok: false };
+  return { ok: true, name: profile.name, svg: qrSvg(profile.link) };
+});
+
+ipcMain.handle("get-stats", (_evt, days = 7) => {
+  const summary = trafficStats.summary(Math.min(Math.max(Number(days) || 7, 1), 90));
+  const names = Object.fromEntries(profileStore().load().map((p) => [p.id, p.name]));
+  return { ...summary, names };
+});
+
+ipcMain.handle("add-subscription", async (_evt, url) => {
+  const clean = String(url || "").trim();
+  try {
+    new URL(clean);
+  } catch {
+    return { ok: false, error: "Это не похоже на ссылку" };
+  }
+  let name = clean;
+  try {
+    name = new URL(clean).hostname;
+  } catch {}
+  const id = subscriptionStore().add({ url: clean, name });
+  const sub = subscriptionStore().list().find((x) => x.id === id);
+  const result = await syncSubscription(sub);
+  if (!result.ok) subscriptionStore().remove(id);
+  broadcastState();
+  return result;
+});
+
+ipcMain.handle("refresh-subscription", async (_evt, id) => {
+  const sub = subscriptionStore().list().find((x) => x.id === id);
+  return sub ? syncSubscription(sub) : { ok: false, error: "Подписка не найдена" };
+});
+
+ipcMain.handle("refresh-all-subscriptions", async () => {
+  await refreshAllSubscriptions();
+  return { ok: true };
+});
+
+ipcMain.handle("remove-subscription", (_evt, id) => {
+  const store = profileStore();
+  const all = store.load();
+  if (all.some((p) => p.subscriptionId === id && p.id === activeProfileId)) disconnect();
+  store.save(all.filter((p) => p.subscriptionId !== id));
+  subscriptionStore().remove(id);
+  broadcastState();
+});
+
+ipcMain.handle("dismiss-hint", (_evt, name) => {
+  if (name === "trayShown") applySettings({ hints: { trayShown: true } });
+});
 
 ipcMain.handle("ping-profile", (_evt, id) => {
   const profile = profileStore().load().find((p) => p.id === id);
@@ -476,16 +845,7 @@ ipcMain.handle("set-autostart", (_evt, enabled) => {
 
 ipcMain.handle("get-settings", () => settingsStore().load());
 
-ipcMain.handle("update-settings", (_evt, partial) => {
-  const next = settingsStore().update(partial);
-  // Kill switch being turned off should immediately lift any active block.
-  if (!next.killSwitchEnabled && killSwitchActive) {
-    killswitch.restore(userDataDir(), log);
-    killSwitchActive = false;
-  }
-  broadcastState();
-  return next;
-});
+ipcMain.handle("update-settings", (_evt, partial) => applySettings(partial));
 
 ipcMain.handle("export-backup", async () => {
   const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
@@ -543,6 +903,33 @@ ipcMain.handle("get-app-info", () => ({
   singboxVersion: getSingBoxVersion(),
 }));
 
+// Real round-trip through the tunnel (Clash API asks the "proxy" outbound to
+// fetch a tiny URL), unlike a TCP ping to the server's own IP, which from
+// this process would itself be routed into the tunnel.
+ipcMain.handle("get-tunnel-latency", () => {
+  return new Promise((resolve) => {
+    if (!activeProfileId) return resolve(null);
+    const url = encodeURIComponent("https://www.gstatic.com/generate_204");
+    const req = http.get(`http://${CLASH_API_ADDRESS}/proxies/proxy/delay?url=${url}&timeout=4000`, (res) => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", (c) => (body += c));
+      res.on("end", () => {
+        try {
+          resolve(JSON.parse(body).delay ?? null);
+        } catch {
+          resolve(null);
+        }
+      });
+    });
+    req.on("error", () => resolve(null));
+    req.setTimeout(6000, () => {
+      req.destroy();
+      resolve(null);
+    });
+  });
+});
+
 ipcMain.handle("get-update-status", () => updateState);
 
 ipcMain.handle("check-for-updates", () => {
@@ -554,46 +941,97 @@ ipcMain.handle("install-update", () => {
 });
 
 function buildTrayMenu() {
-  const profiles = profileStore().load();
+  const settings = settingsStore().load();
+  const profiles = sortWithFavorites(profileStore().load(), settings.favorites);
+  const active = profiles.find((p) => p.id === activeProfileId);
+  const codeTag = (p) => {
+    const c = profileCountryCode(p);
+    return c ? `[${c.toUpperCase()}] ` : "";
+  };
+
+  const header = active
+    ? `Подключено: ${active.name}`
+    : connecting
+      ? "Подключение..."
+      : killSwitchActive
+        ? "Сеть заблокирована (kill switch)"
+        : "Отключено";
 
   const profileItems = profiles.map((p) => ({
-    label: p.id === activeProfileId ? `● ${p.name}` : p.name,
+    label: `${settings.favorites.includes(p.id) ? "★ " : ""}${codeTag(p)}${p.name}`,
     type: "radio",
     checked: p.id === activeProfileId,
-    click: () => connect(p),
+    click: () => {
+      cancelReconnect();
+      connect(p);
+    },
   }));
 
   return Menu.buildFromTemplate([
-    { label: "Открыть", click: openMainWindow },
+    { label: header, enabled: false },
     { type: "separator" },
-    { label: activeProfileId ? "Подключено" : "Отключено", enabled: false },
+    activeProfileId
+      ? {
+          label: "Отключить",
+          click: () => {
+            cancelReconnect();
+            disconnect();
+          },
+        }
+      : {
+          label: settings.autoBest.enabled ? "Подключиться (лучший сервер)" : "Подключиться",
+          enabled: profiles.length > 0 && !connecting,
+          click: quickConnect,
+        },
+    {
+      label: "Подключиться к самому быстрому",
+      enabled: profiles.length > 1 && !connecting,
+      click: () => {
+        cancelReconnect();
+        connectBest();
+      },
+    },
     { type: "separator" },
     ...(profileItems.length ? profileItems : [{ label: "Нет профилей", enabled: false }]),
     { type: "separator" },
-    { label: "Отключить", enabled: !!activeProfileId, click: disconnect },
+    {
+      label: "Kill switch",
+      type: "checkbox",
+      checked: settings.killSwitchEnabled,
+      click: (item) => applySettings({ killSwitchEnabled: item.checked }),
+    },
+    { label: "Открыть Nyx", click: openMainWindow },
     { label: "Выход", click: () => app.quit() },
   ]);
 }
 
-function autoStartSettings() {
+function autoStartSettings({ hidden }) {
+  const base = app.isPackaged ? [] : [path.join(__dirname, "..")];
   return {
     path: process.execPath,
-    args: app.isPackaged ? [] : [path.join(__dirname, "..")],
+    args: hidden ? [...base, "--hidden"] : base,
   };
 }
 
+// Versions before 0.2.4 registered autostart without "--hidden"; still
+// recognize that entry so the checkbox doesn't show "off" after an update.
 function isAutoStartEnabled() {
-  return app.getLoginItemSettings(autoStartSettings()).openAtLogin;
+  return (
+    app.getLoginItemSettings(autoStartSettings({ hidden: true })).openAtLogin ||
+    app.getLoginItemSettings(autoStartSettings({ hidden: false })).openAtLogin
+  );
 }
 
 function setAutoStartEnabled(enabled) {
-  app.setLoginItemSettings({ ...autoStartSettings(), openAtLogin: enabled });
+  app.setLoginItemSettings({ ...autoStartSettings({ hidden: true }), openAtLogin: enabled });
 }
 
 function updateTrayIcon() {
   if (!tray) return;
   tray.setImage(activeProfileId ? ICON_CONNECTED : ICON_DISCONNECTED);
-  tray.setToolTip(activeProfileId ? "Nyx: подключено" : "Nyx: отключено");
+  const active = activeProfileId ? profileStore().load().find((p) => p.id === activeProfileId) : null;
+  const code = active ? profileCountryCode(active) : null;
+  tray.setToolTip(active ? `Nyx: подключено — ${active.name}${code ? ` (${code.toUpperCase()})` : ""}` : "Nyx: отключено");
   tray.setContextMenu(buildTrayMenu());
 }
 
@@ -613,14 +1051,27 @@ app.whenReady().then(() => {
     updateTrayIcon();
     log("tray created ok");
     setTimeout(checkForUpdates, 5000);
+    setInterval(() => trafficStats.flush(), 30000);
+    if (settingsStore().load().subscriptionsAutoUpdate) {
+      setTimeout(refreshAllSubscriptions, 8000);
+      setInterval(() => {
+        if (settingsStore().load().subscriptionsAutoUpdate) refreshAllSubscriptions();
+      }, 6 * 60 * 60 * 1000);
+    }
   } catch (err) {
     log("TRAY CREATE FAILED:", err.stack || err.message);
   }
+  // Even if the tray icon failed or Windows tucked it into the hidden-icons
+  // flyout (it does that for any new tray icon), a manual launch should
+  // always show something.
+  if (!startHidden) openMainWindow();
 });
 
 app.on("window-all-closed", (e) => e.preventDefault());
 app.on("before-quit", () => {
   isQuitting = true;
+  cancelReconnect();
   disconnect();
+  trafficStats.flush();
 });
 app.on("second-instance", () => openMainWindow());

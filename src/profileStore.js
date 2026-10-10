@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, statSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { protectCurrentUser, unprotectCurrentUser } from "./dpapi.js";
@@ -42,6 +42,23 @@ export function createProfileStore(
 ) {
   const file = profileStorePath(userDataDir);
 
+  // Every uncached load() decrypts through a PowerShell process (~0.2s), and the
+  // UI asks for the profile list often, so the decrypted list is kept in memory
+  // and only trusted while the file's modification time is unchanged.
+  let cache = null;
+
+  function mtimeOf() {
+    try {
+      return statSync(file).mtimeMs;
+    } catch {
+      return null;
+    }
+  }
+
+  function remember(profiles) {
+    cache = { mtime: mtimeOf(), profiles: structuredClone(profiles) };
+  }
+
   function save(profiles) {
     mkdirSync(userDataDir, { recursive: true });
     const plaintext = Buffer.from(JSON.stringify(profiles), "utf8");
@@ -52,9 +69,11 @@ export function createProfileStore(
       logger(`profileStore.save(): DPAPI protect failed, writing plaintext: ${err.message}`);
       writeFileSync(file, JSON.stringify(profiles, null, 2));
     }
+    remember(profiles);
   }
 
   function load() {
+    if (cache && cache.mtime !== null && cache.mtime === mtimeOf()) return structuredClone(cache.profiles);
     logger(`profileStore.load(): file=${file} exists=${existsSync(file)}`);
     if (existsSync(file)) {
       try {
@@ -69,6 +88,7 @@ export function createProfileStore(
           const decrypted = crypto.unprotect(Buffer.from(raw.data, "base64"));
           const profiles = JSON.parse(decrypted.toString("utf8"));
           logger(`profileStore.load(): parsed ${profiles.length} profile(s)`);
+          remember(profiles);
           return profiles;
         }
         logger(`profileStore.load(): unrecognized format in ${file}`);
@@ -98,10 +118,10 @@ export function createProfileStore(
   return {
     load,
     save,
-    add({ name, link }) {
+    add({ name, link, subscriptionId }) {
       const profiles = load();
       const id = randomUUID();
-      profiles.push({ id, name, link });
+      profiles.push(subscriptionId ? { id, name, link, subscriptionId } : { id, name, link });
       save(profiles);
       return id;
     },

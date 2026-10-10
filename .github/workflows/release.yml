@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 env:
-  SINGBOX_VERSION: "1.14.2"
+  SINGBOX_VERSION: "1.14.3"
 
 jobs:
   build:
@@ -54,9 +54,6 @@ jobs:
           Expand-Archive -Path sing-box.zip -DestinationPath sing-box-extracted
           New-Item -ItemType Directory -Force -Path vendor | Out-Null
           Copy-Item "sing-box-extracted\sing-box-$env:SINGBOX_VERSION-windows-amd64\sing-box.exe" "vendor\sing-box.exe"
-
-      - name: Regenerate icons
-        run: npm run icons
 
       - name: Build the Windows installer
         run: npm run dist

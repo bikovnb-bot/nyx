@@ -75,6 +75,13 @@ export function buildSingBoxConfig(profile, opts = {}) {
         auto_route: true,
         strict_route: true,
         stack: "system",
+        // Without this, return traffic for anything routed to the "direct"
+        // outbound (private-LAN traffic, and split-tunneled domains/apps)
+        // loops back into the TUN under strict_route and gets no
+        // connectivity at all — auto_detect_interface alone isn't enough on
+        // Windows in practice (confirmed live: split-tunneled sites became
+        // completely unreachable until this was added).
+        exclude_interface: opts.defaultInterfaceName ? [opts.defaultInterfaceName] : undefined,
       },
     ],
     outbounds: [

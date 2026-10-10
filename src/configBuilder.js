@@ -100,7 +100,7 @@ export function buildSingBoxConfig(profile, opts = {}) {
         { type: "https", tag: "remote-dns", server: resolveDnsServer(opts.dns), detour: "proxy" },
         // Only for Russian sites that are sent directly: resolving them through
         // a foreign server would often return an address abroad.
-        ...(directRu ? [{ type: "udp", tag: "ru-dns", server: RU_DNS_SERVER }] : []),
+        ...(directRu ? [{ type: "https", tag: "ru-dns", server: RU_DNS_SERVER }] : []),
       ],
       rules: dnsRules.length ? dnsRules : undefined,
       final: "remote-dns",
@@ -135,7 +135,10 @@ export function buildSingBoxConfig(profile, opts = {}) {
         transport: buildTransport(profile),
         tls: buildTls(profile, !!opts.fragment),
       },
-      { type: "direct", tag: "direct" },
+      // The direct outbound looks names up itself; without this it would use the
+      // default resolver (through the tunnel), which defeats sending RU sites
+      // directly and can fail outright.
+      { type: "direct", tag: "direct", domain_resolver: directRu ? "ru-dns" : undefined },
       { type: "block", tag: "block" },
     ],
     route: {

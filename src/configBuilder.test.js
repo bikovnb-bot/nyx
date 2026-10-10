@@ -74,6 +74,10 @@ test("ready-made routing: Russian sites direct, ads blocked, only when enabled",
   assert.ok(on.route.rules.some((r) => r.rule_set?.includes("geoip-ru") && r.outbound === "direct"));
   assert.ok(on.route.rules.some((r) => r.rule_set?.includes("geosite-ads") && r.action === "reject"));
   assert.ok(on.dns.servers.some((s) => s.tag === "ru-dns"));
+  // plain UDP DNS did not get answered in practice; DoH works
+  assert.equal(on.dns.servers.find((s) => s.tag === "ru-dns").type, "https");
+  // the direct outbound must resolve names through it, not through the tunnel
+  assert.equal(on.outbounds.find((x) => x.tag === "direct").domain_resolver, "ru-dns");
   // ads are rejected before anything can be routed directly
   const adsAt = on.route.rules.findIndex((r) => r.rule_set?.includes("geosite-ads"));
   const directAt = on.route.rules.findIndex((r) => r.outbound === "direct");

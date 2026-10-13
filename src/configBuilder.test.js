@@ -33,6 +33,24 @@ test("respects a custom interface name", () => {
   assert.equal(config.inbounds[0].interface_name, "myTun");
 });
 
+test("rejects QUIC and keeps the TUN MTU below 1500", () => {
+  const config = buildSingBoxConfig(parseVlessLink("vless://uuid@host:443"));
+  assert.ok(config.route.rules.some((r) => r.protocol === "quic" && r.action === "reject"));
+  assert.ok(config.inbounds[0].mtu < 1500);
+  const sniffAt = config.route.rules.findIndex((r) => r.action === "sniff");
+  const quicAt = config.route.rules.findIndex((r) => r.protocol === "quic");
+  assert.ok(sniffAt >= 0 && sniffAt < quicAt, "sniff must run before the QUIC rule");
+});
+
+test("keeps the tunnel IPv4-only: no IPv6 TUN address and AAAA answered empty", () => {
+  const config = buildSingBoxConfig(parseVlessLink("vless://uuid@host:443"));
+  assert.ok(config.inbounds[0].address.every((a) => !a.includes(":")));
+  const aaaa = config.dns.rules[0];
+  assert.deepEqual(aaaa.query_type, ["AAAA"]);
+  assert.equal(aaaa.action, "predefined");
+  assert.equal(aaaa.rcode, "NOERROR");
+});
+
 test("adds no split-tunneling rules when disabled or unset", () => {
   const profile = parseVlessLink("vless://uuid@host:443");
   const config = buildSingBoxConfig(profile);
@@ -63,10 +81,12 @@ test("routes listed domains and processes directly when split tunneling is enabl
 });
 
 test("ready-made routing: Russian sites direct, ads blocked, only when enabled", () => {
-  const profile = parseVlessLink("vless://uuid@host:443");
+  const profile = parseVlessLink("vless://uuid@203.0.113.5:443");
   const off = buildSingBoxConfig(profile, { rulesDir: "/r" });
   assert.equal(off.route.rule_set, undefined);
-  assert.equal(off.dns.rules, undefined);
+  // only the always-on AAAA rule, nothing from the optional routing
+  assert.equal(off.dns.rules.length, 1);
+  assert.deepEqual(off.dns.rules[0].query_type, ["AAAA"]);
   assert.equal(off.dns.servers.length, 1);
 
   const on = buildSingBoxConfig(profile, { rulesDir: "/r", routing: { directRu: true, blockAds: true } });
@@ -78,7 +98,8 @@ test("ready-made routing: Russian sites direct, ads blocked, only when enabled",
   assert.equal(on.dns.servers.find((s) => s.tag === "ru-dns").type, "https");
   // the direct outbound must resolve names through it, not through the tunnel
   assert.deepEqual(on.outbounds.find((x) => x.tag === "direct").domain_resolver, { server: "ru-dns", strategy: "ipv4_only" });
-  assert.ok(on.dns.rules.filter((r) => r.server === "ru-dns").every((r) => r.strategy === "ipv4_only"));
+  // sing-box 1.14 rejects the legacy per-rule `strategy` next to the AAAA rule
+  assert.ok(on.dns.rules.every((r) => r.strategy === undefined));
   // ads are rejected before anything can be routed directly
   const adsAt = on.route.rules.findIndex((r) => r.rule_set?.includes("geosite-ads"));
   const directAt = on.route.rules.findIndex((r) => r.outbound === "direct");
@@ -101,4 +122,27 @@ test("TLS fragment is only added when enabled", () => {
   const tls = parseVlessLink("vless://uuid@host:443?security=tls");
   assert.equal(buildSingBoxConfig(tls).outbounds[0].tls.fragment, undefined);
   assert.equal(buildSingBoxConfig(tls, { fragment: true }).outbounds[0].tls.fragment, true);
+});
+
+test("a server given by name is resolved outside the tunnel, an IP needs no resolver", () => {
+  const named = buildSingBoxConfig(parseVlessLink("vless://uuid@cloud.example.com:443?type=ws&security=tls"), { dns: { provider: "google" } });
+  const proxy = named.outbounds.find((o) => o.tag === "proxy");
+  assert.deepEqual(proxy.domain_resolver, { server: "bootstrap-dns", strategy: "ipv4_only" });
+  const boot = named.dns.servers.find((x) => x.tag === "bootstrap-dns");
+  assert.equal(boot.server, "8.8.8.8");
+  assert.equal(boot.detour, undefined); // not through the proxy it is meant to reach
+  assert.equal(named.dns.servers.find((x) => x.tag === "remote-dns").detour, "proxy");
+
+  const byIp = buildSingBoxConfig(parseVlessLink("vless://uuid@203.0.113.5:443"));
+  assert.equal(byIp.outbounds.find((o) => o.tag === "proxy").domain_resolver, undefined);
+  assert.equal(byIp.dns.servers.find((x) => x.tag === "bootstrap-dns"), undefined);
+});
+
+test("the tunnel is IPv4-only: AAAA answered empty, small MTU, QUIC rejected", () => {
+  const c = buildSingBoxConfig(parseVlessLink("vless://uuid@203.0.113.5:443"));
+  const tun = c.inbounds.find((i) => i.type === "tun");
+  assert.deepEqual(tun.address, ["172.19.0.1/30"]);
+  assert.equal(tun.mtu, 1400);
+  assert.deepEqual(c.dns.rules[0], { query_type: ["AAAA"], action: "predefined", rcode: "NOERROR" });
+  assert.ok(c.route.rules.some((r) => r.protocol === "quic" && r.action === "reject"));
 });

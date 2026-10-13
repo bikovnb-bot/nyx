@@ -85,10 +85,19 @@ export function buildSingBoxConfig(profile, opts = {}) {
   const blockAds = !!opts.routing?.blockAds && !!opts.rulesDir;
   const usedSets = [...(directRu ? ["geosite-ru", "geoip-ru"] : []), ...(blockAds ? ["geosite-ads"] : [])];
   const dnsRules = [
+    // The tunnel is IPv4-only (most VPN servers have no IPv6 route): answering
+    // AAAA would make browsers pick an address that hangs instead of falling
+    // back, so Google/YouTube/Cloudflare sites stalled.
+    { query_type: ["AAAA"], action: "predefined", rcode: "NOERROR" },
     ...(blockAds ? [{ rule_set: ["geosite-ads"], action: "reject" }] : []),
-    ...(directRu ? [{ rule_set: ["geosite-ru"], action: "route", server: "ru-dns", strategy: "ipv4_only" }, { domain_suffix: RU_TLDS, action: "route", server: "ru-dns", strategy: "ipv4_only" }] : []),
+    // No per-rule `strategy: ipv4_only` here: sing-box 1.14 refuses it next to
+    // the AAAA rule above, and that rule already keeps every answer IPv4-only.
+    ...(directRu ? [{ rule_set: ["geosite-ru"], action: "route", server: "ru-dns" }, { domain_suffix: RU_TLDS, action: "route", server: "ru-dns" }] : []),
   ];
-  const tunAddress = opts.tunAddress || ["172.19.0.1/30", "fdfe:dcba:9876::1/126"];
+  // No IPv6 address on the TUN: with one, Windows treats IPv6 as working through
+  // the tunnel and apps try it first, but the server cannot carry it.
+  const hostIsName = !isIP(String(profile.host || "").replace(/^\[|\]$/g, ""));
+  const tunAddress = opts.tunAddress || ["172.19.0.1/30"];
 
   return {
     log: { level: "warn", timestamp: true },
@@ -101,6 +110,10 @@ export function buildSingBoxConfig(profile, opts = {}) {
         // Only for Russian sites that are sent directly: resolving them through
         // a foreign server would often return an address abroad.
         ...(directRu ? [{ type: "https", tag: "ru-dns", server: RU_DNS_SERVER }] : []),
+        // Resolves the VPN server's own name before the tunnel exists. remote-dns
+        // goes through the proxy, so using it for the proxy's address would wait
+        // for the very connection that is being set up.
+        ...(hostIsName ? [{ type: "https", tag: "bootstrap-dns", server: resolveDnsServer(opts.dns) }] : []),
       ],
       rules: dnsRules.length ? dnsRules : undefined,
       final: "remote-dns",
@@ -111,7 +124,9 @@ export function buildSingBoxConfig(profile, opts = {}) {
         tag: "tun-in",
         interface_name: opts.interfaceName || "vlessvpn0",
         address: tunAddress,
-        mtu: 1500,
+        // Below 1500 so the tunnel's own headers (TLS + WebSocket) still fit in a
+        // single packet; at 1500 large TLS packets stall on some sites.
+        mtu: 1400,
         auto_route: true,
         strict_route: true,
         stack: "system",
@@ -130,6 +145,7 @@ export function buildSingBoxConfig(profile, opts = {}) {
         tag: "proxy",
         server: profile.host,
         server_port: profile.port,
+        domain_resolver: hostIsName ? { server: "bootstrap-dns", strategy: "ipv4_only" } : undefined,
         uuid: profile.uuid,
         flow: profile.flow || undefined,
         transport: buildTransport(profile),
@@ -153,6 +169,10 @@ export function buildSingBoxConfig(profile, opts = {}) {
       rules: [
         { action: "sniff" },
         { port: 53, action: "hijack-dns" },
+        // QUIC (UDP/443) is slow to fall back when the tunnel carries it over a
+        // TCP transport (YouTube, Google); rejecting it makes the browser retry
+        // right away over plain TCP.
+        { protocol: "quic", action: "reject" },
         ...(blockAds ? [{ rule_set: ["geosite-ads"], action: "reject" }] : []),
         { ip_is_private: true, outbound: "direct" },
         ...buildSplitTunnelRules(opts.splitTunneling),

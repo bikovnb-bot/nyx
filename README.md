@@ -18,7 +18,7 @@ VLESS+WS+TLS (в том числе тех, что генерирует 3x-ui). N
 | | Windows | Android |
 |---|---|---|
 | **Последний релиз** | [Последний релиз Windows](https://github.com/bikovnb-bot/nyx/releases/latest) | [Последний релиз Android](https://github.com/bikovnb-bot/nyx/releases?q=android-v&expanded=true) |
-| **Прямая ссылка на файл** | <!-- win-direct -->[Nyx-Installer-0.6.0.exe](https://github.com/bikovnb-bot/nyx/releases/download/v0.6.0/Nyx-Installer-0.6.0.exe)<!-- /win-direct --> | <!-- android-direct -->[Nyx-Android-0.2.1-arm64.apk](https://github.com/bikovnb-bot/nyx/releases/download/android-v0.2.1/Nyx-Android-0.2.1-arm64.apk)<!-- /android-direct --> |
+| **Прямая ссылка на файл** | <!-- win-direct -->[Nyx-Installer.exe](https://github.com/bikovnb-bot/nyx/releases/latest/download/Nyx-Installer.exe)<!-- /win-direct --> | <!-- android-direct -->[Nyx-Android-0.2.2-arm64.apk](https://github.com/bikovnb-bot/nyx/releases/download/android-v0.2.2/Nyx-Android-0.2.2-arm64.apk)<!-- /android-direct --> |
 | **Версия** | Windows 10/11, 64-бит | Android 7+, 64-битный процессор (arm64) |
 | **Обновления** | сами, внутри приложения | сами, в «Настройки» → «О программе» |
 

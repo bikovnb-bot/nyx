@@ -246,7 +246,8 @@
       const s = data.settings;
       let rulesDir;
       if (s.routing.directRu || s.routing.blockAds) rulesDir = (await vpn.prepareRules()).dir;
-      const { config } = core.buildMobileConfig(profile.link, { dns: s.dns, routing: s.routing, fragment: s.fragment, rulesDir });
+      const serverIp = await resolveServerIp(profile.link);
+      const { config } = core.buildMobileConfig(profile.link, { dns: s.dns, routing: s.routing, fragment: s.fragment, rulesDir, serverIp });
       renderState("starting");
       await vpn.start({
         config: JSON.stringify(config),
@@ -257,6 +258,26 @@
     } catch (err) {
       renderState("error", err && err.message ? err.message : String(err));
     }
+  }
+
+  // The server's name is looked up here, before the tunnel exists: inside
+  // sing-box it would have to go through the tunnel it is about to set up.
+  async function resolveServerIp(link) {
+    try {
+      const host = core.hostOf(link);
+      if (!host || /^[\d.]+$/.test(host) || host.includes(":")) return undefined;
+      for (const url of ["https://1.1.1.1/dns-query", "https://8.8.8.8/resolve", "https://9.9.9.9:5053/dns-query"]) {
+        try {
+          const ctl = new AbortController();
+          const t = setTimeout(() => ctl.abort(), 4000);
+          const r = await fetch(`${url}?name=${encodeURIComponent(host)}&type=A`, { headers: { accept: "application/dns-json" }, signal: ctl.signal });
+          clearTimeout(t);
+          const a = ((await r.json()).Answer || []).find((x) => x.type === 1);
+          if (a && a.data) return a.data;
+        } catch (e) { /* next resolver */ }
+      }
+    } catch (e) { /* use the name as is */ }
+    return undefined;
   }
 
   function waitFor(target, ms) {

@@ -96,7 +96,7 @@ export function buildSingBoxConfig(profile, opts = {}) {
   ];
   // No IPv6 address on the TUN: with one, Windows treats IPv6 as working through
   // the tunnel and apps try it first, but the server cannot carry it.
-  const hostIsName = !isIP(String(profile.host || "").replace(/^\[|\]$/g, ""));
+  const hostIsName = opts.bootstrapDns !== false && !isIP(String(profile.host || "").replace(/^\[|\]$/g, ""));
   const tunAddress = opts.tunAddress || ["172.19.0.1/30"];
 
   return {

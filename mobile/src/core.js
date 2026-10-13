@@ -15,19 +15,29 @@ export { runSpeedtest } from "../../src/speedtest.js";
 
 export function buildMobileConfig(link, opts = {}) {
   const profile = parseVlessLink(link);
+  if (opts.serverIp) {
+    // connect by address; the name stays as SNI / WebSocket Host
+    const name = profile.host;
+    profile.sni = profile.sni || name;
+    if (profile.type === "ws") profile.wsHost = profile.wsHost || name;
+    profile.host = opts.serverIp;
+  }
   const config = buildSingBoxConfig(profile, {
     dns: opts.dns,
     routing: opts.routing,
     fragment: opts.fragment,
     rulesDir: opts.rulesDir,
     splitTunneling: undefined,
+    // on Android the separate bootstrap resolver stalls (libbox has no local resolver)
+    bootstrapDns: false,
+    tunAddress: ["172.19.0.1/30", "fdfe:dcba:9876::1/126"],
   });
   const tun = config.inbounds.find((i) => i.type === "tun");
   delete tun.interface_name;
   delete tun.exclude_interface;
   delete tun.strict_route;
   tun.stack = "mixed";
-  tun.mtu = 1400;
+  tun.mtu = 1500;
   config.log = { level: "warn", timestamp: true };
   return { config, profile };
 }

@@ -38,8 +38,12 @@ jobs:
       # still a manual, tested decision (see README "Выпуск релиза").
       - name: Warn if a newer sing-box release exists
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          latest=$(curl -fsSL https://api.github.com/repos/SagerNet/sing-box/releases/latest | grep -oP '"tag_name":\s*"v\K[^"]+')
+          # Informational: an API error (rate limit, network) must not fail the build,
+          # so the lookup ends in "|| true" and an empty answer only warns.
+          latest=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/repos/SagerNet/sing-box/releases/latest | grep -oP '"tag_name":\s*"v\K[^"]+' || true)
           if [ -z "$latest" ]; then
             echo "::warning::Could not fetch the latest sing-box release from GitHub to compare against SINGBOX_VERSION=$SINGBOX_VERSION."
           elif [ "$latest" != "$SINGBOX_VERSION" ]; then

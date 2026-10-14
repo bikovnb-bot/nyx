@@ -1,5 +1,14 @@
 import { fragmentOf, hostOf } from "./country.js";
 
+// atob + TextDecoder exist in Node and in the phone's WebView alike; Node's Buffer
+// does not exist in the WebView, which made every base64 subscription look empty there.
+function base64ToUtf8(b64) {
+  const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+  const binary = atob(padded);
+  const bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
 // Subscription bodies are either plain text with one link per line, or the
 // same thing base64-encoded (standard or URL-safe alphabet).
 export function decodeSubscriptionBody(text) {
@@ -7,7 +16,7 @@ export function decodeSubscriptionBody(text) {
   if (t && !t.includes("://") && /^[A-Za-z0-9+/_\-=\s]+$/.test(t)) {
     const normalized = t.replace(/\s+/g, "").replace(/-/g, "+").replace(/_/g, "/");
     try {
-      return Buffer.from(normalized, "base64").toString("utf8");
+      return base64ToUtf8(normalized);
     } catch {
       return t;
     }

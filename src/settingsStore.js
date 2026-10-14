@@ -33,6 +33,8 @@ const DEFAULT_SETTINGS = {
   subscriptionsAutoUpdate: true,
   lastProfileId: null,
   favorites: [],
+  // Ids of the profile-list groups (subscriptions, "manual", "favorites") the user folded.
+  collapsedGroups: [],
   // { x, y, width, height, maximized } remembered between launches.
   window: null,
   hints: { trayShown: false },

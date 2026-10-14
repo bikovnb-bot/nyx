@@ -1,6 +1,6 @@
 {
   "name": "nyx-vpn-client",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "license": "GPL-3.0-or-later",
   "description": "Nyx — cross-platform VLESS+WS+TLS VPN client (TUN mode) built on top of sing-box",
   "author": "Balamut",

@@ -37,6 +37,7 @@ import { IP_INFO_URL, parseIpInfo, leakVerdict, describeDns } from "../src/leakC
 import { refreshRules, pickRulesDir } from "../src/rulesUpdate.js";
 import { runSpeedtest } from "../src/speedtest.js";
 import { summarizeUpdaterError, createRetryPolicy } from "../src/updaterErrors.js";
+import { parseProfileTitle, parseUserinfo, formatUsage, buildGroups } from "../src/subscriptionGroups.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -703,7 +704,11 @@ async function fetchSubscriptionText(url) {
     if (!res.ok) throw new Error(`Сервер подписки ответил ${res.status}`);
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.length > MAX_SUBSCRIPTION_BYTES) throw new Error("Ответ подписки слишком большой");
-    return buf.toString("utf8");
+    return {
+      text: buf.toString("utf8"),
+      title: parseProfileTitle(res.headers.get("profile-title")),
+      usage: parseUserinfo(res.headers.get("subscription-userinfo")),
+    };
   } catch (err) {
     if (err.name === "AbortError") throw new Error("Сервер подписки не ответил за 15 секунд");
     throw err;
@@ -715,7 +720,7 @@ async function fetchSubscriptionText(url) {
 // Loads the list once and saves it once: every store call goes through DPAPI.
 async function syncSubscription(sub) {
   try {
-    const text = await fetchSubscriptionText(sub.url);
+    const { text, title, usage } = await fetchSubscriptionText(sub.url);
     const { links, skipped } = parseSubscription(text);
     if (!links.length) {
       throw new Error(skipped ? "В подписке нет VLESS-ссылок (другие протоколы не поддерживаются)" : "Подписка пуста или формат не распознан");
@@ -735,7 +740,8 @@ async function syncSubscription(sub) {
     for (const a of plan.toAdd) next.push({ id: randomUUID(), name: a.name, link: a.link, subscriptionId: sub.id });
     store.save(next);
 
-    subscriptionStore().patch(sub.id, { updatedAt: Date.now(), count: links.length, error: null });
+    subscriptionStore().applyServerTitle(sub.id, title);
+    subscriptionStore().patch(sub.id, { updatedAt: Date.now(), count: links.length, error: null, usage });
     log("[subscriptions] synced", sub.name, `added=${plan.toAdd.length} updated=${plan.toUpdate.length} removed=${removable.size} skipped=${skipped}`);
     return { ok: true, added: plan.toAdd.length, updated: plan.toUpdate.length, removed: removable.size, skipped };
   } catch (err) {
@@ -757,7 +763,7 @@ function publicSubscriptions() {
     try {
       host = new URL(x.url).hostname;
     } catch {}
-    return { id: x.id, name: x.name, host, updatedAt: x.updatedAt, count: x.count, error: x.error };
+    return { id: x.id, name: x.name, nameIsCustom: !!x.nameIsCustom, host, updatedAt: x.updatedAt, count: x.count, error: x.error, usage: x.usage || null };
   });
 }
 
@@ -837,6 +843,7 @@ function getState() {
     profiles = [];
   }
   geoResolver.queue(profiles);
+  const subscriptions = publicSubscriptions();
   const favorites = new Set(settings.favorites);
   profiles = sortWithFavorites(profiles, settings.favorites).map((p) => ({
     ...p,
@@ -852,7 +859,13 @@ function getState() {
     settings,
     killSwitchActive,
     issue: connectionIssue,
-    subscriptions: publicSubscriptions(),
+    subscriptions,
+    // The profile list: favorites, the servers added by hand and one group per
+    // subscription, with the folded ones marked (the window only draws them).
+    groups: buildGroups(profiles, subscriptions, { collapsed: settings.collapsedGroups, activeProfileId }).map((g) => ({
+      ...g,
+      usageText: formatUsage(g.usage),
+    })),
   };
 }
 
@@ -1003,7 +1016,7 @@ ipcMain.handle("get-stats", (_evt, days = 7) => {
   return { ...summary, names };
 });
 
-ipcMain.handle("add-subscription", async (_evt, url) => {
+ipcMain.handle("add-subscription", async (_evt, url, typedName) => {
   const clean = String(url || "").trim();
   try {
     new URL(clean);
@@ -1014,12 +1027,28 @@ ipcMain.handle("add-subscription", async (_evt, url) => {
   try {
     name = new URL(clean).hostname;
   } catch {}
-  const id = subscriptionStore().add({ url: clean, name });
+  const typed = String(typedName || "").trim();
+  const id = subscriptionStore().add({ url: clean, name: typed || name, custom: !!typed });
   const sub = subscriptionStore().list().find((x) => x.id === id);
   const result = await syncSubscription(sub);
   if (!result.ok) subscriptionStore().remove(id);
   broadcastState();
   return result;
+});
+
+ipcMain.handle("rename-subscription", (_evt, id, name) => {
+  const ok = subscriptionStore().rename(id, name);
+  broadcastState();
+  updateTrayIcon();
+  return { ok };
+});
+
+ipcMain.handle("set-group-collapsed", (_evt, groupId, collapsed) => {
+  const current = new Set(settingsStore().load().collapsedGroups);
+  if (collapsed) current.add(groupId);
+  else current.delete(groupId);
+  settingsStore().update({ collapsedGroups: [...current] });
+  broadcastState();
 });
 
 ipcMain.handle("refresh-subscription", async (_evt, id) => {
@@ -1315,7 +1344,7 @@ function buildTrayMenu() {
         ? "Сеть заблокирована (kill switch)"
         : "Отключено";
 
-  const profileItems = profiles.map((p) => ({
+  const profileItem = (p) => ({
     label: `${settings.favorites.includes(p.id) ? "★ " : ""}${p.name}`,
     icon: flagIcon(p),
     type: "radio",
@@ -1324,7 +1353,28 @@ function buildTrayMenu() {
       cancelReconnect();
       connect(p);
     },
-  }));
+  });
+  // Favorites and the servers added by hand sit at the top level; every
+  // subscription is a submenu, so several of them do not turn into one long list.
+  const groups = buildGroups(
+    profiles.map((p) => ({ ...p, favorite: settings.favorites.includes(p.id) })),
+    subscriptionStore().list().map((s) => ({ id: s.id, name: s.name })),
+    { activeProfileId }
+  );
+  const hasSubscriptions = groups.some((g) => g.kind === "subscription" && g.count);
+  const profileItems = [];
+  for (const g of groups) {
+    if (!g.count) continue;
+    if (g.kind === "subscription") {
+      profileItems.push({ label: `${g.hasActive ? "● " : ""}${g.name} (${g.count})`, submenu: g.profiles.map(profileItem) });
+    } else if (g.kind === "favorites") {
+      profileItems.push({ label: "Избранное", enabled: false }, ...g.profiles.map(profileItem));
+      if (groups.length > 1) profileItems.push({ type: "separator" });
+    } else {
+      if (hasSubscriptions) profileItems.push({ label: "Мои серверы", enabled: false });
+      profileItems.push(...g.profiles.map(profileItem));
+    }
+  }
 
   return Menu.buildFromTemplate([
     { label: header, enabled: false },

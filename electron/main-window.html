@@ -550,6 +550,41 @@
     padding: 5px 4px 5px 2px;
   }
 
+  /* subscription groups */
+  .group-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 10px; margin-top: 6px;
+    border-radius: 10px; cursor: pointer; user-select: none;
+    background: rgba(var(--ink), 0.04);
+    border: 1px solid transparent;
+  }
+  .group-head:hover { background: rgba(var(--ink), 0.07); }
+  .group-head.has-active { border-color: rgba(139, 92, 246, 0.35); }
+  .group-chev { width: 14px; height: 14px; flex: none; transition: transform 0.2s ease; color: var(--text-dim); }
+  .group-head.collapsed .group-chev { transform: rotate(-90deg); }
+  .group-title { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px; }
+  .group-name { font-weight: 600; font-size: 12.5px; color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .group-count { font-size: 11px; color: var(--text-dim); flex: none; }
+  .group-active { font-size: 11px; color: #a78bfa; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 45%; }
+  .group-actions { display: flex; gap: 2px; flex: none; }
+  .group-act {
+    width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; border: none; border-radius: 6px; color: var(--text-dim); cursor: pointer;
+  }
+  .group-act:hover { background: rgba(var(--ink), 0.1); color: var(--text-strong); }
+  .group-act.confirm { color: var(--danger); background: rgba(255, 80, 80, 0.15); }
+  .group-act svg { width: 13px; height: 13px; }
+  .group-rename-input {
+    flex: 1; min-width: 0; font: inherit; font-size: 12.5px; font-weight: 600;
+    color: var(--text-strong); background: rgba(var(--ink), 0.08);
+    border: 1px solid rgba(139, 92, 246, 0.5); border-radius: 6px; padding: 2px 6px; outline: none;
+  }
+  .group-info { font-size: 11px; color: var(--text-dim); padding: 2px 12px 0 32px; }
+  .group-info.error { color: var(--danger); }
+  .group-body { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; }
+  .group-body.hidden { display: none; }
+  .kind-hint { font-size: 11.5px; color: var(--text-dim); min-height: 15px; margin-top: -4px; }
+
   .profile-card {
     padding: 9px 12px;
     cursor: pointer;
@@ -2036,12 +2071,7 @@
             <span>Подписки</span>
             <button class="btn-outline" id="refreshAllSubsBtn" style="height:24px; padding:0 8px; font-size:11px;">Обновить все</button>
           </div>
-          <p style="font-size:11.5px; color:var(--text-dim); line-height:1.3;">Ссылка на подписку добавит все её VLESS-серверы разом и будет обновлять список. Сама ссылка хранится зашифрованной.</p>
-          <div class="quick-add-row">
-            <input type="text" class="quick-add-input" id="subUrlInput" placeholder="https://... ссылка на подписку" />
-            <button class="quick-add-btn" id="subAddBtn" title="Добавить подписку">+</button>
-          </div>
-          <div class="chips-list" id="subList"></div>
+          <p style="font-size:11.5px; color:var(--text-dim); line-height:1.3;">Подписка добавляется кнопкой «+ Добавить» (вставьте ссылку https://…). Каждая подписка — отдельная группа в списке серверов: там её можно свернуть, переименовать, обновить и удалить. Сама ссылка хранится зашифрованной.</p>
           <div class="switch-row">
             <span>Обновлять при запуске и раз в 6 часов</span>
             <label class="switch"><input type="checkbox" id="subAutoToggle" /></label>
@@ -2116,15 +2146,16 @@
   <!-- Add / Edit Profile Modal -->
   <div class="modal-backdrop" id="profileModal">
     <div class="glass-modal">
-      <h2 class="modal-title" id="profileModalTitle">Добавить профиль</h2>
+      <h2 class="modal-title" id="profileModalTitle">Добавить сервер или подписку</h2>
       <div class="modal-field">
         <label>Название</label>
         <input type="text" class="modal-input" id="profileNameInput" placeholder="Домашний" />
       </div>
       <div class="modal-field">
-        <label>Ссылка конфигурации (vless://)</label>
-        <input type="text" class="modal-input" id="profileLinkInput" placeholder="vless://uuid@example.com:443?security=tls..." />
+        <label id="profileLinkLabel">Ссылка: сервер (vless://) или подписка (https://)</label>
+        <input type="text" class="modal-input" id="profileLinkInput" placeholder="vless://… или https://… ссылка на подписку" spellcheck="false" />
       </div>
+      <div class="kind-hint" id="profileKindHint"></div>
       <div class="modal-btns">
         <button class="modal-btn" id="profileModalCancel">Отмена</button>
         <button class="modal-btn primary" id="profileModalSave">Сохранить</button>
@@ -2463,7 +2494,6 @@
       $("autostartCheck").checked = !!autoStart;
       renderIssue(state.issue);
       if (state.settings) applySettingsToControls(state.settings);
-      renderSubscriptions(state.subscriptions || []);
 
       // Show/hide kill switch badge in titlebar
       const showKillSwitch = !!(killSwitchActive || settings.killSwitchEnabled);
@@ -2561,7 +2591,7 @@
         return;
       }
 
-      for (const p of filtered) {
+      const buildCard = (p) => {
         const isActive = p.id === activeProfileId;
         const isExpanded = expandedProfiles.has(p.id);
         const details = parseLinkDetails(p.link);
@@ -2656,6 +2686,8 @@
           e.stopPropagation();
           editingProfileId = p.id;
           $("profileModalTitle").textContent = "Редактировать профиль";
+          $("profileKindHint").textContent = "";
+          $("profileModalSave").textContent = "Сохранить";
           $("profileNameInput").value = p.name;
           $("profileLinkInput").value = p.link;
           $("profileModal").classList.add("open");
@@ -2676,8 +2708,117 @@
           toast("Профиль удален", "success");
         });
 
-        container.appendChild(card);
+        return card;
+      };
+
+      // Groups come from the main process; the search and the country filter only
+      // thin them out (and open the folded ones so every match is visible).
+      const visible = new Set(filtered.map((p) => p.id));
+      const filtering = !!query || selectedCountry !== "all";
+      const groups = (currentState.groups || [])
+        .map((g) => ({ ...g, profiles: g.profiles.filter((p) => visible.has(p.id)) }))
+        .filter((g) => !filtering || g.profiles.length)
+        .map((g) => ({ ...g, collapsed: filtering ? false : g.collapsed }));
+      const profileById = new Map(profiles.map((p) => [p.id, p]));
+      const onlyOneGroup = groups.length === 1 && groups[0].kind === "manual";
+
+      for (const g of groups) {
+        if (!onlyOneGroup) container.appendChild(buildGroupHead(g, profileById));
+        const body = document.createElement("div");
+        body.className = "group-body" + (g.collapsed && !onlyOneGroup ? " hidden" : "");
+        for (const p of g.profiles) body.appendChild(buildCard(p));
+        container.appendChild(body);
       }
+    }
+
+    const ICON = {
+      chev: '<svg class="group-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
+      refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg>',
+      edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+      trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>',
+    };
+
+    function groupInfoText(g) {
+      const parts = [];
+      if (g.updatedAt) parts.push("обновлена " + new Date(g.updatedAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }));
+      if (g.usageText) parts.push(g.usageText);
+      return parts.join(" · ");
+    }
+
+    // The header of a group: fold/unfold, and for a subscription also refresh,
+    // rename and delete. A folded group still shows which of its servers is connected.
+    function buildGroupHead(g, profileById) {
+      const wrap = document.createElement("div");
+      const head = document.createElement("div");
+      head.className = "group-head" + (g.collapsed ? " collapsed" : "") + (g.hasActive ? " has-active" : "");
+      const activeName = g.collapsed && g.hasActive ? (g.profiles.find((p) => p.id === currentState.activeProfileId) || {}).name : "";
+      const isSub = g.kind === "subscription";
+      head.innerHTML = `
+        ${ICON.chev}
+        <div class="group-title">
+          <span class="group-name" title="${escapeHtml(g.name)}">${escapeHtml(g.name)}</span>
+          <span class="group-count">${g.count}</span>
+          ${activeName ? `<span class="group-active">● ${escapeHtml(activeName)}</span>` : ""}
+        </div>
+        ${isSub ? `<div class="group-actions">
+          <button class="group-act g-refresh" title="Обновить подписку">${ICON.refresh}</button>
+          <button class="group-act g-rename" title="Переименовать">${ICON.edit}</button>
+          <button class="group-act g-del" title="Удалить подписку и её серверы">${ICON.trash}</button>
+        </div>` : ""}`;
+      head.addEventListener("click", () => window.vlessvpn.setGroupCollapsed(g.id, !g.collapsed));
+      wrap.appendChild(head);
+
+      if (isSub) {
+        const info = groupInfoText(g);
+        if (g.error || info) {
+          const line = document.createElement("div");
+          line.className = "group-info" + (g.error ? " error" : "");
+          line.textContent = g.error || info;
+          wrap.appendChild(line);
+        }
+        head.querySelector(".g-refresh").addEventListener("click", async (e) => {
+          e.stopPropagation();
+          e.currentTarget.style.opacity = "0.4";
+          reportSubscriptionResult(await window.vlessvpn.refreshSubscription(g.id));
+        });
+        head.querySelector(".g-rename").addEventListener("click", (e) => {
+          e.stopPropagation();
+          const nameEl = head.querySelector(".group-name");
+          const input = document.createElement("input");
+          input.className = "group-rename-input";
+          input.value = g.name;
+          input.maxLength = 60;
+          nameEl.replaceWith(input);
+          input.focus();
+          input.select();
+          let done = false;
+          const finish = async (save) => {
+            if (done) return;
+            done = true;
+            const value = input.value.trim();
+            if (save && value && value !== g.name) await window.vlessvpn.renameSubscription(g.id, value);
+            else renderProfilesList(currentState.profiles, currentState.activeProfileId);
+          };
+          input.addEventListener("click", (ev) => ev.stopPropagation());
+          input.addEventListener("keydown", (ev) => {
+            if (ev.key === "Enter") finish(true);
+            else if (ev.key === "Escape") { ev.stopPropagation(); finish(false); }
+          });
+          input.addEventListener("blur", () => finish(true));
+        });
+        head.querySelector(".g-del").addEventListener("click", (e) => {
+          e.stopPropagation();
+          const btn = e.currentTarget;
+          if (!btn.classList.contains("confirm")) {
+            btn.classList.add("confirm");
+            toast("Нажмите ещё раз: подписка и все её серверы будут удалены", "error", 3500);
+            setTimeout(() => btn.classList.remove("confirm"), 3000);
+            return;
+          }
+          window.vlessvpn.removeSubscription(g.id);
+        });
+      }
+      return wrap;
     }
 
     // Power toggle button: the main process decides whether that means the last
@@ -2706,13 +2847,54 @@
     });
 
     // Profile Modal
+    // What was pasted: one https:// address is a subscription, vless:// lines are servers.
+    function detectAddInput(text) {
+      const parts = String(text || "").trim().split(/\s+/).filter(Boolean);
+      if (!parts.length) return { kind: "unknown" };
+      if (parts.length === 1 && /^https?:\/\/[^/\s]+/i.test(parts[0])) return { kind: "subscription", url: parts[0] };
+      if (parts.every((x) => /^vless:\/\//i.test(x))) return { kind: "servers", links: parts };
+      return { kind: "unknown" };
+    }
+    function updateAddHint() {
+      if (editingProfileId) { $("profileKindHint").textContent = ""; return; }
+      const found = detectAddInput($("profileLinkInput").value);
+      const name = $("profileNameInput");
+      if (found.kind === "subscription") {
+        $("profileKindHint").textContent = "Это подписка: добавятся все её серверы, список будет обновляться сам.";
+        name.placeholder = "Название подписки (необязательно)";
+        $("profileModalSave").textContent = "Добавить подписку";
+      } else if (found.kind === "servers") {
+        $("profileKindHint").textContent = found.links.length > 1
+          ? `Серверов: ${found.links.length}. Названия возьмутся из самих ссылок.`
+          : "Это сервер.";
+        name.placeholder = "Домашний";
+        $("profileModalSave").textContent = "Сохранить";
+      } else {
+        $("profileKindHint").textContent = $("profileLinkInput").value.trim() ? "Нужна ссылка vless:// или адрес подписки https://" : "";
+        name.placeholder = "Название";
+        $("profileModalSave").textContent = "Сохранить";
+      }
+    }
+    $("profileLinkInput").addEventListener("input", updateAddHint);
+    // A one-line field drops line breaks from pasted text and glues several links
+    // together; turn them into spaces so every link stays separate.
+    $("profileLinkInput").addEventListener("paste", (e) => {
+      const text = (e.clipboardData || window.clipboardData)?.getData("text") || "";
+      if (!/[\r\n]/.test(text)) return;
+      e.preventDefault();
+      const el = e.target;
+      el.setRangeText(text.trim().replace(/\s*[\r\n]+\s*/g, " "), el.selectionStart, el.selectionEnd, "end");
+      updateAddHint();
+    });
+
     $("addProfileBtn").addEventListener("click", () => {
       editingProfileId = null;
-      $("profileModalTitle").textContent = "Добавить профиль";
+      $("profileModalTitle").textContent = "Добавить сервер или подписку";
       $("profileNameInput").value = "";
       $("profileLinkInput").value = "";
+      updateAddHint();
       $("profileModal").classList.add("open");
-      $("profileNameInput").focus();
+      $("profileLinkInput").focus();
     });
 
     $("profileModalCancel").addEventListener("click", () => $("profileModal").classList.remove("open"));
@@ -2720,19 +2902,43 @@
       if (e.target === $("profileModal")) $("profileModal").classList.remove("open");
     });
 
+    function serverNameFromLink(link) {
+      const frag = link.includes("#") ? link.slice(link.indexOf("#") + 1) : "";
+      try { return decodeURIComponent(frag).trim() || (link.split("@")[1] || "").split(/[?#:]/)[0] || "Сервер"; }
+      catch { return frag || "Сервер"; }
+    }
+
     $("profileModalSave").addEventListener("click", async () => {
-      const link = $("profileLinkInput").value.trim();
-      const name = $("profileNameInput").value.trim() || "Домашний";
-      if (!link.startsWith("vless://")) {
-        toast("Ссылка должна начинаться с vless://", "error");
+      const raw = $("profileLinkInput").value.trim();
+      const typedName = $("profileNameInput").value.trim();
+      if (editingProfileId) {
+        if (!raw.startsWith("vless://")) { toast("Ссылка должна начинаться с vless://", "error"); return; }
+        await window.vlessvpn.editProfile(editingProfileId, typedName || "Домашний", raw);
+        toast("Профиль обновлен", "success");
+        $("profileModal").classList.remove("open");
         return;
       }
-      if (editingProfileId) {
-        await window.vlessvpn.editProfile(editingProfileId, name, link);
-        toast("Профиль обновлен", "success");
-      } else {
-        await window.vlessvpn.addProfile(name, link);
+      const found = detectAddInput(raw);
+      if (found.kind === "unknown") {
+        toast("Вставьте ссылку vless:// или адрес подписки https://", "error");
+        return;
+      }
+      if (found.kind === "subscription") {
+        const btn = $("profileModalSave");
+        btn.disabled = true;
+        toast("Загружаю подписку...", "success", 1500);
+        const r = await window.vlessvpn.addSubscription(found.url, typedName);
+        btn.disabled = false;
+        reportSubscriptionResult(r);
+        if (r.ok) $("profileModal").classList.remove("open");
+        return;
+      }
+      if (found.links.length === 1) {
+        await window.vlessvpn.addProfile(typedName || serverNameFromLink(found.links[0]), found.links[0]);
         toast("Профиль добавлен", "success");
+      } else {
+        for (const link of found.links) await window.vlessvpn.addProfile(serverNameFromLink(link), link);
+        toast(`Добавлено серверов: ${found.links.length}`, "success");
       }
       $("profileModal").classList.remove("open");
     });
@@ -3022,45 +3228,7 @@
     $("leakClose").addEventListener("click", () => $("leakModal").classList.remove("open"));
     $("leakModal").addEventListener("click", (e) => { if (e.target === $("leakModal")) $("leakModal").classList.remove("open"); });
 
-    // ---- subscriptions
-    function renderSubscriptions(subs) {
-      const box = $("subList");
-      box.innerHTML = "";
-      if (!subs.length) {
-        box.innerHTML = `<div style="font-size:11px; color:var(--text-dim); padding:4px 0;">Подписок нет</div>`;
-        return;
-      }
-      for (const sub of subs) {
-        const when = sub.updatedAt
-          ? new Date(sub.updatedAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
-          : "ещё не обновлялась";
-        const item = document.createElement("div");
-        item.className = "chip-item";
-        item.style.flexWrap = "wrap";
-        item.innerHTML = `
-          <svg class="chip-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-          <span title="${escapeHtml(sub.host)}">${escapeHtml(sub.name)} · ${sub.count} · ${escapeHtml(when)}</span>
-          <button class="chip-del sub-refresh" title="Обновить"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg></button>
-          <button class="chip-del sub-del" title="Удалить подписку и её профили"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
-          ${sub.error ? `<div style="flex-basis:100%; font-size:11px; color:var(--danger);">${escapeHtml(sub.error)}</div>` : ""}`;
-        item.querySelector(".sub-refresh").addEventListener("click", async (e) => {
-          e.currentTarget.style.opacity = "0.4";
-          reportSubscriptionResult(await window.vlessvpn.refreshSubscription(sub.id));
-        });
-        item.querySelector(".sub-del").addEventListener("click", (e) => {
-          const btn = e.currentTarget;
-          if (!btn.classList.contains("confirm")) {
-            btn.classList.add("confirm");
-            toast("Нажмите ещё раз: подписка и все её профили будут удалены", "error", 3500);
-            setTimeout(() => btn.classList.remove("confirm"), 3000);
-            return;
-          }
-          window.vlessvpn.removeSubscription(sub.id);
-        });
-        box.appendChild(item);
-      }
-    }
-
+    // ---- subscriptions: the list lives in the profile groups now (see buildGroupHead)
     function reportSubscriptionResult(r) {
       if (!r.ok) return toast(r.error || "Не удалось загрузить подписку", "error", 4000);
       const parts = [];
@@ -3071,19 +3239,6 @@
       toast(parts.length ? `Подписка: ${parts.join(", ")}` : "Подписка актуальна", "success", 3500);
     }
 
-    async function addSubscription() {
-      const input = $("subUrlInput");
-      const url = input.value.trim();
-      if (!url) return;
-      $("subAddBtn").disabled = true;
-      toast("Загружаю подписку...", "success", 1500);
-      const r = await window.vlessvpn.addSubscription(url);
-      $("subAddBtn").disabled = false;
-      if (r.ok) input.value = "";
-      reportSubscriptionResult(r);
-    }
-    $("subAddBtn").addEventListener("click", addSubscription);
-    $("subUrlInput").addEventListener("keydown", (e) => { if (e.key === "Enter") addSubscription(); });
     $("refreshAllSubsBtn").addEventListener("click", async () => {
       toast("Обновляю подписки...", "success", 1500);
       await window.vlessvpn.refreshAllSubscriptions();

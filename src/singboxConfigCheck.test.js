@@ -17,6 +17,19 @@ const bin = path.join(root, "vendor", process.platform === "win32" ? "sing-box.e
 const rulesDir = path.join(root, "vendor", "rules");
 const have = existsSync(bin) && existsSync(rulesDir);
 
+// The binary can be locked for a moment while the user's own Nyx is running it
+// (the spawn itself fails with EBUSY/EPERM); that says nothing about the config,
+// so the test is skipped then instead of failing.
+function checkConfig(t, file) {
+  let r;
+  for (let i = 0; i < 3; i++) {
+    r = spawnSync(bin, ["check", "-c", file], { encoding: "utf8" });
+    if (!r.error) break;
+  }
+  if (r.error) return t.skip(`sing-box could not be started: ${r.error.code || r.error.message}`);
+  assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+}
+
 const links = {
   ip: "vless://11111111-1111-1111-1111-111111111111@203.0.113.5:443?type=ws&security=tls&path=%2Fs&sni=example.com#ip",
   name: "vless://11111111-1111-1111-1111-111111111111@cloud.example.com:443?type=ws&security=tls&path=%2Fs#name",
@@ -31,11 +44,10 @@ const options = {
 
 for (const [lname, link] of Object.entries(links)) {
   for (const [oname, opts] of Object.entries(options)) {
-    test(`sing-box accepts the config: ${lname} / ${oname}`, { skip: !have && "vendor/sing-box.exe not present" }, () => {
+    test(`sing-box accepts the config: ${lname} / ${oname}`, { skip: !have && "vendor/sing-box.exe not present" }, (t) => {
       const file = path.join(mkdtempSync(path.join(tmpdir(), "nyx-check-")), "config.json");
       writeFileSync(file, JSON.stringify(buildSingBoxConfig(parseVlessLink(link), opts)));
-      const r = spawnSync(bin, ["check", "-c", file], { encoding: "utf8" });
-      assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+      checkConfig(t, file);
     });
   }
 }
@@ -44,12 +56,11 @@ for (const [lname, link] of Object.entries(links)) {
 // keeps the tunnel (the proxy outbound is a local SOCKS port).
 for (const [lname, link] of Object.entries(links)) {
   for (const [oname, opts] of Object.entries(options)) {
-    test(`sing-box accepts the upstream-core config: ${lname} / ${oname}`, { skip: !have && "vendor/sing-box.exe not present" }, () => {
+    test(`sing-box accepts the upstream-core config: ${lname} / ${oname}`, { skip: !have && "vendor/sing-box.exe not present" }, (t) => {
       const file = path.join(mkdtempSync(path.join(tmpdir(), "nyx-check-")), "config.json");
       const upstream = { port: 10808, auth: { user: "u", pass: "p" }, serverIps: ["203.0.113.5"], processNames: ["xray.exe"] };
       writeFileSync(file, JSON.stringify(buildSingBoxConfig(parseVlessLink(link), { ...opts, upstream })));
-      const r = spawnSync(bin, ["check", "-c", file], { encoding: "utf8" });
-      assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+      checkConfig(t, file);
     });
   }
 }

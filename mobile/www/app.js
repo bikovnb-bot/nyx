@@ -178,7 +178,7 @@
     for (const item of plan.toAdd) data.profiles.push({ id: uid(), name: item.name, link: item.link, subscriptionId: sub.id });
     for (const u of plan.toUpdate) {
       const p = data.profiles.find((x) => x.id === u.id);
-      if (p) p.link = u.link;
+      if (p) { p.link = u.link; if (u.name) p.name = u.name; }
     }
     sub.updatedAt = Date.now();
     save();

@@ -733,7 +733,7 @@ async function syncSubscription(sub) {
 
     let next = all.map((x) => {
       const u = plan.toUpdate.find((c) => c.id === x.id);
-      return u ? { ...x, link: u.link } : x;
+      return u ? { ...x, link: u.link, ...(u.name ? { name: u.name } : {}) } : x;
     });
     const removable = new Set(plan.toRemoveIds.filter((id) => id !== activeProfileId));
     next = next.filter((x) => !removable.has(x.id));

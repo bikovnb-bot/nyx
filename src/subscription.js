@@ -73,7 +73,14 @@ export function planSubscriptionSync(existing, links, otherKeys = new Set()) {
     seen.add(key);
     const current = byKey.get(key);
     if (current) {
-      if (current.link !== link) toUpdate.push({ id: current.id, link });
+      if (current.link !== link) {
+        const update = { id: current.id, link };
+        // A name the user never changed follows the server's (the panel renamed the
+        // server); a name the user typed stays as it is.
+        const serverName = nameFromLink(link);
+        if (current.name === nameFromLink(current.link) && serverName !== current.name) update.name = serverName;
+        toUpdate.push(update);
+      }
     } else if (!otherKeys.has(key)) {
       toAdd.push({ name: nameFromLink(link), link });
     }

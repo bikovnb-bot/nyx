@@ -49,3 +49,14 @@ test("load() tolerates a corrupted settings file", () => {
     assert.deepEqual(store.load().splitTunneling, { enabled: false, domains: [], processes: [] });
   });
 });
+
+test("the core setting defaults to auto and rejects unknown values", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "nyx-settings-"));
+  const store = createSettingsStore(dir, () => {});
+  assert.equal(store.load().core, "auto");
+  assert.equal(store.update({ core: "xray" }).core, "xray");
+  assert.equal(store.load().core, "xray");
+  assert.equal(store.update({ core: "nonsense" }).core, "auto");
+  writeFileSync(path.join(dir, "settings.json"), JSON.stringify({ core: 42 }));
+  assert.equal(store.load().core, "auto");
+});

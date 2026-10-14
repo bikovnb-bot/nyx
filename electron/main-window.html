@@ -1958,6 +1958,14 @@
             <button class="btn-outline" id="rulesUpdateBtn" style="flex:none; width:auto; padding:6px 12px;">Обновить</button>
           </div>
           <div style="display:flex; flex-direction:column; gap:4px; margin-top:8px;">
+            <span style="font-size:11px; color:var(--text-dim);">Ядро подключения</span>
+            <div class="dd" id="coreSelect" tabindex="0" role="listbox">
+              <div class="dd-value"><span id="coreLabel"></span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></div>
+              <div class="dd-list" id="coreList"></div>
+            </div>
+            <span style="font-size:11px; color:var(--text-dim);" id="coreHint"></span>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:4px; margin-top:8px;">
             <span style="font-size:11px; color:var(--text-dim);">DNS-сервер (DNS-over-HTTPS, через туннель)</span>
             <div class="dd" id="dnsSelect" tabindex="0" role="listbox">
               <div class="dd-value"><span id="dnsLabel"></span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></div>
@@ -2765,6 +2773,7 @@
         routing: { directRu: !!s.routing?.directRu, blockAds: !!s.routing?.blockAds },
         dns: { provider: s.dns?.provider || "cloudflare", custom: s.dns?.custom || "" },
         fragment: { enabled: !!s.fragment?.enabled },
+        core: ["auto", "singbox", "xray"].includes(s.core) ? s.core : "auto",
         theme: ["dark", "light", "system"].includes(s.theme) ? s.theme : "dark",
         rulesUpdatedAt: s.rulesUpdatedAt || null,
         subscriptionsAutoUpdate: s.subscriptionsAutoUpdate !== false
@@ -2778,6 +2787,7 @@
       $("blockAdsToggle").checked = settings.routing.blockAds;
       $("fragmentToggle").checked = settings.fragment.enabled;
       renderDnsSelect();
+      renderCoreSelect();
       applyTheme(settings.theme);
       renderRulesInfo();
       renderFallbackSelect();
@@ -2834,6 +2844,39 @@
     });
     $("subAutoToggle").addEventListener("change", (e) => { settings.subscriptionsAutoUpdate = e.target.checked; persistSettings(false); });
 
+
+    // ---- connection core
+    const CORE_OPTIONS = [
+      ["auto", "Авто (рекомендуется)", "Xray для профилей Reality и XHTTP, sing-box для остальных"],
+      ["singbox", "sing-box", "Один процесс, подходит для ws/tls и grpc. XHTTP через него недоступен"],
+      ["xray", "Xray", "Эталонная реализация: работает с любыми версиями серверов 3X-UI"],
+    ];
+    function renderCoreSelect() {
+      const cur = CORE_OPTIONS.some((o) => o[0] === settings.core) ? settings.core : "auto";
+      const option = CORE_OPTIONS.find((o) => o[0] === cur);
+      $("coreLabel").textContent = option[1];
+      $("coreHint").textContent = option[2];
+      $("coreList").innerHTML = CORE_OPTIONS
+        .map(([v, l]) => `<div class="dd-item${v === cur ? " selected" : ""}" role="option" data-value="${v}">${escapeHtml(l)}</div>`)
+        .join("");
+    }
+    const coreDd = $("coreSelect");
+    coreDd.addEventListener("click", (e) => {
+      const item = e.target.closest(".dd-item");
+      if (item) {
+        settings.core = item.dataset.value;
+        renderCoreSelect();
+        persistSettings();
+        coreDd.classList.remove("open");
+      } else {
+        coreDd.classList.toggle("open");
+      }
+    });
+    coreDd.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); coreDd.classList.toggle("open"); }
+      else if (e.key === "Escape" && coreDd.classList.contains("open")) { e.stopPropagation(); coreDd.classList.remove("open"); }
+    });
+    document.addEventListener("click", (e) => { if (!coreDd.contains(e.target)) coreDd.classList.remove("open"); });
 
     // ---- routing, DNS, fragment
     const DNS_OPTIONS = [["cloudflare", "Cloudflare (1.1.1.1)"], ["google", "Google (8.8.8.8)"], ["quad9", "Quad9 (9.9.9.9)"], ["custom", "Свой адрес…"]];

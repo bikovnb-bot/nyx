@@ -80,6 +80,29 @@ function buildSplitTunnelRules(splitTunneling) {
   return rules;
 }
 
+// opts.upstream = { port, auth?: {user, pass}, serverIps?: [], processNames?: [] }:
+// the proxy connection is carried by another core that serves SOCKS on 127.0.0.1.
+function buildUpstreamOutbound(upstream) {
+  return {
+    type: "socks",
+    tag: "proxy",
+    server: "127.0.0.1",
+    server_port: upstream.port,
+    version: "5",
+    username: upstream.auth?.user,
+    password: upstream.auth?.pass,
+  };
+}
+
+function buildUpstreamBypassRules(upstream) {
+  if (!upstream) return [];
+  const rules = [];
+  if (upstream.processNames?.length) rules.push({ process_name: upstream.processNames, outbound: "direct" });
+  const cidrs = (upstream.serverIps || []).map((ip) => (ip.includes(":") ? ip + "/128" : ip + "/32"));
+  if (cidrs.length) rules.push({ ip_cidr: cidrs, outbound: "direct" });
+  return rules;
+}
+
 export function buildSingBoxConfig(profile, opts = {}) {
   const directRu = !!opts.routing?.directRu && !!opts.rulesDir;
   const blockAds = !!opts.routing?.blockAds && !!opts.rulesDir;
@@ -96,7 +119,9 @@ export function buildSingBoxConfig(profile, opts = {}) {
   ];
   // No IPv6 address on the TUN: with one, Windows treats IPv6 as working through
   // the tunnel and apps try it first, but the server cannot carry it.
-  const hostIsName = opts.bootstrapDns !== false && !isIP(String(profile.host || "").replace(/^\[|\]$/g, ""));
+  // With an upstream core (Xray) the name is resolved by Nyx before the tunnel and
+  // sing-box never connects to the server itself, so it needs no bootstrap DNS.
+  const hostIsName = !opts.upstream && opts.bootstrapDns !== false && !isIP(String(profile.host || "").replace(/^\[|\]$/g, ""));
   const tunAddress = opts.tunAddress || ["172.19.0.1/30"];
 
   return {
@@ -140,7 +165,7 @@ export function buildSingBoxConfig(profile, opts = {}) {
       },
     ],
     outbounds: [
-      {
+      opts.upstream ? buildUpstreamOutbound(opts.upstream) : {
         type: "vless",
         tag: "proxy",
         server: profile.host,
@@ -167,6 +192,9 @@ export function buildSingBoxConfig(profile, opts = {}) {
         path: path.join(opts.rulesDir, RULE_SETS[tag]),
       })),
       rules: [
+        // The upstream core's own connection to the server must not go back into
+        // the tunnel: it leaves directly, matched by process and by address.
+        ...buildUpstreamBypassRules(opts.upstream),
         { action: "sniff" },
         { port: 53, action: "hijack-dns" },
         // QUIC (UDP/443) is slow to fall back when the tunnel carries it over a

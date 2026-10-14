@@ -146,3 +146,29 @@ test("the tunnel is IPv4-only: AAAA answered empty, small MTU, QUIC rejected", (
   assert.deepEqual(c.dns.rules[0], { query_type: ["AAAA"], action: "predefined", rcode: "NOERROR" });
   assert.ok(c.route.rules.some((r) => r.protocol === "quic" && r.action === "reject"));
 });
+
+test("upstream core: the proxy outbound is a local SOCKS port, not the server", () => {
+  const profile = parseVlessLink("vless://uuid-1@cloud.example.com:443?type=ws&security=tls&path=%2Fs");
+  const config = buildSingBoxConfig(profile, { upstream: { port: 10808, auth: { user: "u", pass: "p" } } });
+  const proxy = config.outbounds.find((o) => o.tag === "proxy");
+  assert.deepEqual(proxy, { type: "socks", tag: "proxy", server: "127.0.0.1", server_port: 10808, version: "5", username: "u", password: "p" });
+  // sing-box never connects to the server, so no bootstrap DNS for its name
+  assert.ok(!config.dns.servers.some((s) => s.tag === "bootstrap-dns"));
+  assert.equal(config.route.final, "proxy");
+});
+
+test("upstream core: its own connection to the server bypasses the tunnel", () => {
+  const profile = parseVlessLink("vless://uuid-1@203.0.113.5:443?type=tcp");
+  const config = buildSingBoxConfig(profile, { upstream: { port: 1, serverIps: ["203.0.113.5", "2001:db8::1"], processNames: ["xray.exe"] } });
+  const [byProcess, byAddress, sniff] = config.route.rules;
+  assert.deepEqual(byProcess, { process_name: ["xray.exe"], outbound: "direct" });
+  assert.deepEqual(byAddress, { ip_cidr: ["203.0.113.5/32", "2001:db8::1/128"], outbound: "direct" });
+  assert.deepEqual(sniff, { action: "sniff" });
+});
+
+test("without an upstream core nothing changes", () => {
+  const profile = parseVlessLink("vless://uuid-1@203.0.113.5:443?type=tcp");
+  const config = buildSingBoxConfig(profile);
+  assert.equal(config.outbounds[0].type, "vless");
+  assert.deepEqual(config.route.rules[0], { action: "sniff" });
+});

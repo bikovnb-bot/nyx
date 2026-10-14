@@ -10,6 +10,9 @@ permissions:
 
 env:
   SINGBOX_VERSION: "1.14.3"
+  # The Xray core Nyx can use next to sing-box; pinned like sing-box and checked
+  # against the SHA-256 that Xray publishes beside the archive.
+  XRAY_VERSION: "26.10.10"
 
 jobs:
   build:
@@ -54,6 +57,22 @@ jobs:
           Expand-Archive -Path sing-box.zip -DestinationPath sing-box-extracted
           New-Item -ItemType Directory -Force -Path vendor | Out-Null
           Copy-Item "sing-box-extracted\sing-box-$env:SINGBOX_VERSION-windows-amd64\sing-box.exe" "vendor\sing-box.exe"
+
+      - name: Download Xray
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $base = "https://github.com/XTLS/Xray-core/releases/download/v$env:XRAY_VERSION"
+          Invoke-WebRequest -Uri "$base/Xray-windows-64.zip" -OutFile xray.zip
+          Invoke-WebRequest -Uri "$base/Xray-windows-64.zip.dgst" -OutFile xray.zip.dgst
+          $line = Select-String -Path xray.zip.dgst -Pattern '^SHA2-256=\s*([0-9a-fA-F]{64})' | Select-Object -First 1
+          if (-not $line) { throw "No SHA2-256 line in xray.zip.dgst" }
+          $expected = $line.Matches[0].Groups[1].Value.ToLower()
+          $actual = (Get-FileHash -Algorithm SHA256 xray.zip).Hash.ToLower()
+          if ($expected -ne $actual) { throw "Xray archive hash mismatch: expected $expected, got $actual" }
+          Expand-Archive -Path xray.zip -DestinationPath xray-extracted
+          Copy-Item "xray-extracted\xray.exe" "vendor\xray.exe"
+          & "vendor\xray.exe" version
 
       - name: Build the Windows installer
         run: npm run dist

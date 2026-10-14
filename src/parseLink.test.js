@@ -51,3 +51,12 @@ test("defaults type to tcp and security to none", () => {
   assert.equal(p.type, "tcp");
   assert.equal(p.security, "none");
 });
+
+test("xhttp (and its old name splithttp) is recognised with its mode", () => {
+  const a = parseVlessLink("vless://uuid@host:443?type=xhttp&security=tls&path=%2Fx&mode=packet-up");
+  assert.equal(a.type, "xhttp");
+  assert.equal(a.xhttpMode, "packet-up");
+  assert.equal(a.path, "/x");
+  assert.equal(parseVlessLink("vless://uuid@host:443?type=splithttp").type, "xhttp");
+  assert.equal(parseVlessLink("vless://uuid@host:443?type=xhttp").xhttpMode, "auto");
+});

@@ -39,3 +39,17 @@ for (const [lname, link] of Object.entries(links)) {
     });
   }
 }
+
+// The same check for the mode where Xray carries the connection and sing-box only
+// keeps the tunnel (the proxy outbound is a local SOCKS port).
+for (const [lname, link] of Object.entries(links)) {
+  for (const [oname, opts] of Object.entries(options)) {
+    test(`sing-box accepts the upstream-core config: ${lname} / ${oname}`, { skip: !have && "vendor/sing-box.exe not present" }, () => {
+      const file = path.join(mkdtempSync(path.join(tmpdir(), "nyx-check-")), "config.json");
+      const upstream = { port: 10808, auth: { user: "u", pass: "p" }, serverIps: ["203.0.113.5"], processNames: ["xray.exe"] };
+      writeFileSync(file, JSON.stringify(buildSingBoxConfig(parseVlessLink(link), { ...opts, upstream })));
+      const r = spawnSync(bin, ["check", "-c", file], { encoding: "utf8" });
+      assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    });
+  }
+}

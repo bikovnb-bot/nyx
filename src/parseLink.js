@@ -19,7 +19,9 @@ export function parseVlessLink(link) {
 
   const params = new URLSearchParams(query);
   const security = params.get("security") || "none";
-  const type = params.get("type") || "tcp";
+  // "splithttp" is the old name of XHTTP; both mean the same transport.
+  const rawType = params.get("type") || "tcp";
+  const type = rawType === "splithttp" ? "xhttp" : rawType;
   const publicKey = params.get("pbk") || "";
   const serviceName = params.get("serviceName") ? decodeURIComponent(params.get("serviceName")) : "";
 
@@ -49,6 +51,8 @@ export function parseVlessLink(link) {
     spiderX: params.get("spx") ? decodeURIComponent(params.get("spx")) : "",
     // grpc
     serviceName,
+    // xhttp (only the Xray core carries it)
+    xhttpMode: params.get("mode") || "auto",
   };
 }
 

@@ -1,5 +1,7 @@
 node_modules/
 vendor/sing-box.exe
+vendor/xray.exe
+vendor/xray.zip
 vendor/sing-box.zip
 vendor/*.dll
 vendor/sing-box-*/

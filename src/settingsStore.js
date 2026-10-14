@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
+import { normalizeCore } from "./xrayConfig.js";
 
 const DEFAULT_SETTINGS = {
   killSwitchEnabled: false,
@@ -22,6 +23,9 @@ const DEFAULT_SETTINGS = {
   dns: { provider: "cloudflare", custom: "" },
   // Split TLS ClientHello into pieces (helps against DPI that blocks by signature).
   fragment: { enabled: false },
+  // Which core carries the connection: "auto" (Xray for Reality/XHTTP profiles,
+  // sing-box for the rest) | "singbox" | "xray".
+  core: "auto",
   // "dark" | "light" | "system"
   theme: "dark",
   // When the routing lists were last refreshed by hand (null = the bundled ones).
@@ -53,7 +57,9 @@ export function mergeSettings(base, patch) {
 }
 
 function withDefaults(raw) {
-  return mergeSettings(structuredClone(DEFAULT_SETTINGS), raw);
+  const settings = mergeSettings(structuredClone(DEFAULT_SETTINGS), raw);
+  settings.core = normalizeCore(settings.core);
+  return settings;
 }
 
 export function createSettingsStore(userDataDir, logger = console.error) {
@@ -76,6 +82,7 @@ export function createSettingsStore(userDataDir, logger = console.error) {
 
   function update(partial) {
     const next = mergeSettings(load(), partial);
+    next.core = normalizeCore(next.core);
     save(next);
     return next;
   }

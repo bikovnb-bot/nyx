@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { writeFileSync, mkdtempSync, readFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { connect as netConnect } from "node:net";
+import { connect as netConnect, isIP } from "node:net";
 import http from "node:http";
 import { parseVlessLink } from "../src/parseLink.js";
 import { buildSingBoxConfig, CLASH_API_ADDRESS } from "../src/configBuilder.js";
@@ -19,7 +19,9 @@ import { isElevatedWindows, relaunchElevatedWindows } from "../src/elevate.js";
 import { ensureRegistered as ensureElevationTaskRegistered, runViaTask } from "../src/scheduledTask.js";
 import { initLogger, log, getLogFile, getLogTail } from "../src/logger.js";
 import * as killswitch from "../src/killswitch.js";
-import { verifySingBoxBinary } from "../src/singboxIntegrity.js";
+import { verifyBinary } from "../src/singboxIntegrity.js";
+import { findXrayBinary, runXray, freeLoopbackPort, randomSocksAuth, waitForPort, XRAY_BINARY_NAME } from "../src/xray.js";
+import { buildXrayConfig, chooseCore } from "../src/xrayConfig.js";
 import { redactVlessLink } from "../src/redact.js";
 import { getDefaultInterfaceName } from "../src/networkInterface.js";
 import { randomUUID } from "node:crypto";
@@ -131,6 +133,9 @@ if (app.isPackaged) {
 let tray = null;
 let mainWindow = null;
 let child = null;
+// The Xray core, when it carries the connection and sing-box only keeps the tunnel.
+let xrayChild = null;
+let xrayTail = [];
 let activeProfileId = null;
 let connecting = false;
 // The latest explained problem with the proxy connection, shown as a banner.
@@ -268,6 +273,7 @@ function disconnect() {
     child.kill();
     child = null;
   }
+  stopXray();
   resetTraffic();
   trafficStats.flush();
   activeProfileId = null;
@@ -309,11 +315,35 @@ function handleSingBoxLine(line) {
   broadcastState();
 }
 
+function stopXray() {
+  if (!xrayChild) return;
+  const x = xrayChild;
+  xrayChild = null;
+  x.kill();
+}
+
+// Checks a bundled core binary against what this app version recorded, and tells
+// the user if it is missing or was changed.
+function binaryTrusted(binaryPath, label, fileName) {
+  const integrity = verifyBinary(userDataDir(), binaryPath, app.getVersion(), log, label);
+  if (integrity.ok) return true;
+  if (integrity.reason === "missing") {
+    notify(`${fileName} не найден`, `Файл ${fileName} отсутствует, подключение невозможно.`);
+  } else {
+    notify(
+      "Проверка целостности не пройдена",
+      `Файл ${fileName} изменился с прошлого запуска этой версии Nyx. Подключение остановлено в целях безопасности.`
+    );
+  }
+  return false;
+}
+
 function connect(profile) {
   disconnect();
   userInitiatedDisconnect = false;
   connectStartedAt = Date.now();
   issueTimes.clear();
+  const token = connectToken;
 
   // Show "connecting" right away: the integrity hash and interface lookup below
   // block this process for a moment.
@@ -337,21 +367,107 @@ function connect(profile) {
     notify("Небезопасное соединение", `Профиль "${profile.name}" отключает проверку TLS-сертификата.`);
   }
 
-  const singboxBinary = findSingBoxBinary();
-  const integrity = verifySingBoxBinary(userDataDir(), singboxBinary, app.getVersion(), log);
-  if (!integrity.ok) {
-    if (integrity.reason === "missing") {
-      notify("sing-box не найден", "Бинарник sing-box отсутствует, подключение невозможно.");
-    } else {
-      notify(
-        "Проверка целостности не пройдена",
-        "Файл sing-box.exe изменился с прошлого запуска этой версии Nyx. Подключение остановлено в целях безопасности."
-      );
-    }
+  const settings = settingsStore().load();
+  const xrayBinary = findXrayBinary();
+  const choice = chooseCore(parsed, settings.core, { xrayAvailable: !!xrayBinary });
+  if (choice.core === null) {
+    notify("Нужно ядро Xray", "Профиль использует XHTTP, а Xray в этой сборке не найден.");
     return fail();
   }
+  if (choice.note === "xhttp-needs-xray") notify("Используется Xray", "XHTTP работает только через ядро Xray, выбор sing-box пропущен.");
+  if (choice.note === "xray-missing") notify("Xray не найден", "Подключаюсь через sing-box.");
+  log("core:", choice.core, "| setting:", settings.core || "auto");
 
-  const settings = settingsStore().load();
+  // sing-box always runs (it keeps the tunnel); Xray only when it carries the connection.
+  if (!binaryTrusted(findSingBoxBinary(), "singbox", "sing-box.exe")) return fail();
+  if (choice.core === "xray" && !binaryTrusted(xrayBinary, "xray", "xray.exe")) return fail();
+
+  if (choice.core === "xray") {
+    activeProfileId = profile.id;
+    broadcastState();
+    startXrayThenTunnel(profile, parsed, settings, token);
+    return true;
+  }
+  return startSingBoxTunnel(profile, parsed, settings, null);
+}
+
+// Xray first (it needs the server's address resolved while the network is still
+// untouched), then the tunnel on top of it.
+async function startXrayThenTunnel(profile, parsed, settings, token) {
+  const abort = (title, text) => {
+    if (token !== connectToken) return; // already disconnected or switched to another profile
+    stopXray();
+    notify(title, text);
+    activeProfileId = null;
+    connecting = false;
+    broadcastState();
+  };
+
+  try {
+    const host = parsed.host.replace(/^\[|\]$/g, "");
+    let serverIp = host;
+    if (!isIP(host)) {
+      try {
+        serverIp = (await dnsLookup(host, { family: 4 })).address;
+      } catch (err) {
+        log("cannot resolve the server name:", host, err.message);
+        return abort("Не удалось найти сервер", `Адрес ${host} не определился: проверьте интернет и имя сервера.`);
+      }
+    }
+    const port = await freeLoopbackPort();
+    const auth = randomSocksAuth();
+    if (token !== connectToken) return;
+
+    const dir = mkdtempSync(path.join(tmpdir(), "nyxxray-"));
+    const configPath = path.join(dir, "config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify(
+        buildXrayConfig(parsed, { socksPort: port, socksAuth: auth, serverIp: isIP(host) ? undefined : serverIp, fragment: settings.fragment.enabled })
+      )
+    );
+    log("starting xray for", profile.name, redactVlessLink(profile.link), "socks 127.0.0.1:" + port, "server", serverIp);
+
+    xrayTail = [];
+    const thisXray = runXray(configPath, {
+      onLog: (text) => {
+        for (const line of text.split(/\r?\n/).filter(Boolean)) {
+          log("[xray]", line);
+          xrayTail = [...xrayTail.slice(-4), line];
+          // Xray words the Reality failure differently; the hint table knows sing-box's wording.
+          handleSingBoxLine(line.replace(/REALITY: received real certificate.*/, "reality verification failed"));
+        }
+      },
+      onError: (err) => log("xray spawn error:", err.stack || err.message),
+    });
+    xrayChild = thisXray;
+    thisXray.on("exit", (code) => {
+      log("xray exited, code=", code);
+      if (xrayChild !== thisXray) return; // stopped on purpose
+      xrayChild = null;
+      if (child && activeProfileId === profile.id && !userInitiatedDisconnect) {
+        notify("Ядро Xray остановилось", `Код завершения: ${code}`);
+        child.kill(); // the tunnel has nothing to carry traffic any more: sing-box's exit handler takes over
+      }
+    });
+
+    try {
+      await waitForPort(port, { isAlive: () => xrayChild === thisXray && thisXray.exitCode === null });
+    } catch (err) {
+      return abort("Не удалось запустить Xray", err.message === "timeout" ? "Ядро не отвечает." : `Xray завершился при запуске. ${xrayTail.slice(-1)[0] || "Подробности в журнале."}`);
+    }
+    if (token !== connectToken) return;
+
+    startSingBoxTunnel(profile, parsed, settings, { port, auth, serverIps: [serverIp], processNames: [XRAY_BINARY_NAME] });
+  } catch (err) {
+    log("xray start failed:", err.stack || err.message);
+    abort("Не удалось запустить Xray", err.message);
+  }
+}
+
+// `upstream`: null when sing-box connects to the server itself, otherwise the
+// local SOCKS port of the core that does (see buildSingBoxConfig).
+function startSingBoxTunnel(profile, parsed, settings, upstream) {
   const defaultInterfaceName = getDefaultInterfaceName();
   log("default network interface for split routing:", defaultInterfaceName);
   const config = buildSingBoxConfig(parsed, {
@@ -362,6 +478,7 @@ function connect(profile) {
     dns: settings.dns,
     fragment: settings.fragment.enabled,
     rulesDir: pickRulesDir(userDataDir(), findRulesDir()),
+    upstream: upstream || undefined,
   });
   const dir = mkdtempSync(path.join(tmpdir(), "vlessvpn-"));
   const configPath = path.join(dir, "config.json");
@@ -375,7 +492,7 @@ function connect(profile) {
   );
   log("connecting to", profile.name, redactVlessLink(profile.link), "config:", configPath);
 
-  child = runSingBox(configPath, {
+  const thisChild = runSingBox(configPath, {
     onLog: (line) => {
       log("[sing-box]", line.trim());
       if (/sing-box started/i.test(line)) markConnected(profile);
@@ -387,13 +504,16 @@ function connect(profile) {
       if (activeProfileId === profile.id) {
         activeProfileId = null;
         connecting = false;
+        stopXray();
         broadcastState();
       }
     },
   });
+  child = thisChild;
 
-  child.on("exit", (code) => {
+  thisChild.on("exit", (code) => {
     log("sing-box exited, code=", code);
+    if (child === thisChild) stopXray(); // Xray only exists to serve this tunnel
     if (activeProfileId === profile.id) {
       const unexpected = !userInitiatedDisconnect && code !== 0;
       resetTraffic();

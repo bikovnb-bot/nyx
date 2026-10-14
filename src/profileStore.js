@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, statSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { protectCurrentUser, unprotectCurrentUser } from "./dpapi.js";
+import { protectCurrentUser, unprotectCurrentUser, unprotectCurrentUserAsync } from "./dpapi.js";
 
 export function profileStorePath(userDataDir) {
   return path.join(userDataDir, "profiles.json");
@@ -25,6 +25,7 @@ const plaintextCodec = {
 const defaultCrypto = {
   protect: protectCurrentUser,
   unprotect: unprotectCurrentUser,
+  unprotectAsync: unprotectCurrentUserAsync,
 };
 
 const FORMAT_TAG = "dpapi-currentuser";
@@ -118,7 +119,24 @@ export function createProfileStore(
     return [];
   }
 
+  // Decrypts in the background and fills the cache, so the first load() (tray menu,
+  // first window state) does not have to wait for a PowerShell process. If load()
+  // gets there first it simply decrypts on its own, as before.
+  async function preload() {
+    try {
+      const stamp = mtimeOf();
+      if (stamp === null || (cache && cache.mtime === stamp) || !crypto.unprotectAsync) return;
+      const raw = JSON.parse(readFileSync(file, "utf8"));
+      if (!raw || raw.enc !== FORMAT_TAG) return;
+      const profiles = JSON.parse((await crypto.unprotectAsync(Buffer.from(raw.data, "base64"))).toString("utf8"));
+      if (mtimeOf() === stamp) cache = { mtime: stamp, profiles: structuredClone(profiles) };
+    } catch (err) {
+      logger(`profileStore.preload(): ${err.message}`);
+    }
+  }
+
   return {
+    preload,
     load,
     save,
     add({ name, link, subscriptionId }) {

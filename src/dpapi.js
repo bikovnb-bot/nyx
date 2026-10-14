@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawnSync, execFile } from "node:child_process";
 
 // Windows DPAPI ties encrypted data to the current Windows user account,
 // not to the app's code-signing identity — unlike Electron's safeStorage
@@ -48,4 +48,21 @@ export function unprotectCurrentUser(cipherBuffer) {
     throw new Error(`DPAPI unprotect failed: ${result.stderr || "no output"}`);
   }
   return Buffer.from(result.stdout.trim(), "base64");
+}
+
+// Same as unprotectCurrentUser, without blocking the process: used to decrypt the
+// profiles in the background while the app starts.
+export function unprotectCurrentUserAsync(cipherBuffer) {
+  return new Promise((resolve, reject) => {
+    const child = execFile(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-Command", UNPROTECT_SCRIPT],
+      { encoding: "utf8", windowsHide: true, maxBuffer: 16 * 1024 * 1024 },
+      (err, stdout, stderr) => {
+        if (err || !stdout) return reject(new Error(`DPAPI unprotect failed: ${stderr || (err && err.message) || "no output"}`));
+        resolve(Buffer.from(stdout.trim(), "base64"));
+      }
+    );
+    child.stdin.end(cipherBuffer.toString("base64"));
+  });
 }

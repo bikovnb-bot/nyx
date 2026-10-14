@@ -1,4 +1,5 @@
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { networkInterfaces } from "node:os";
 
 // Split tunneling routes some connections to the "direct" outbound instead
 // of the VPN tunnel. With sing-box's TUN inbound using strict_route, the OS
@@ -28,11 +29,59 @@ $best = Get-NetRoute -DestinationPrefix '0.0.0.0/0' | Where-Object { $physical -
 if ($best) { [Console]::Out.Write($best.Alias) }
 `.trim();
 
-export function getDefaultInterfaceName() {
-  const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", SCRIPT], {
-    encoding: "utf8",
-    windowsHide: true,
+// Fast path: `route print` answers in ~35 ms where the PowerShell script above
+// needs 1.6-1.8 s. The default routes (0.0.0.0/0) are read from it, the lowest
+// metric wins and the adapter's name comes from Node's own view of the
+// interfaces. Anything that looks like a virtual adapter or a VPN makes the
+// fast path give up, because only the PowerShell script knows what is physical.
+const VIRTUAL_NAME = /tun|tap|wintun|vpn|virtual|vethernet|vmware|vbox|wsl|hyper-v|loopback|pseudo|zoog|happ|nyx|vlessvpn|tailscale|wireguard|radmin|hamachi|docker/i;
+
+// "  0.0.0.0  0.0.0.0  192.168.31.1  192.168.31.56  25" -> { gateway, ip, metric }
+export function parseRoutePrint(text) {
+  const routes = [];
+  for (const line of String(text || "").split(/\r?\n/)) {
+    const m = /^\s*0\.0\.0\.0\s+0\.0\.0\.0\s+(.+?)\s+(\d+\.\d+\.\d+\.\d+)\s+(\d+)\s*$/.exec(line);
+    if (m) routes.push({ gateway: m[1].trim(), ip: m[2], metric: Number(m[3]) });
+  }
+  return routes.sort((a, b) => a.metric - b.metric);
+}
+
+// interfaces: the result of os.networkInterfaces(). Routes of virtual-looking
+// adapters (another VPN, or Nyx's own tunnel that has not gone away yet) are
+// skipped; null when nothing clear-cut is left.
+export function pickDefaultInterface(routes, interfaces) {
+  for (const route of routes) {
+    for (const [name, addrs] of Object.entries(interfaces || {})) {
+      if ((addrs || []).some((a) => a.family === "IPv4" && a.address === route.ip)) {
+        if (!VIRTUAL_NAME.test(name)) return name;
+        break;
+      }
+    }
+  }
+  return null;
+}
+
+function run(file, args, timeout) {
+  return new Promise((resolve) => {
+    execFile(file, args, { encoding: "utf8", windowsHide: true, timeout }, (err, stdout) => resolve(err ? "" : stdout));
   });
-  const name = (result.stdout || "").replace(/^﻿/, "").trim();
-  return name || null;
+}
+
+async function fastDefaultInterfaceName() {
+  try {
+    return pickDefaultInterface(parseRoutePrint(await run("route", ["print", "-4", "0.0.0.0"], 5000)), networkInterfaces());
+  } catch {
+    return null;
+  }
+}
+
+async function slowDefaultInterfaceName() {
+  const out = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", SCRIPT], 20000);
+  return out.replace(/^\ufeff/, "").trim() || null;
+}
+
+// Never blocks the main process (this used to freeze the window for ~1.7 s on
+// every connect).
+export async function getDefaultInterfaceName() {
+  return (await fastDefaultInterfaceName()) || (await slowDefaultInterfaceName());
 }

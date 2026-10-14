@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawnSync, execFile } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 import path from "node:path";
 
@@ -39,20 +39,55 @@ export function engage(userDataDir, tunInterfaceName, logger = console.error) {
   }
 }
 
-export function restore(userDataDir, logger = console.error) {
+function savedAdapterNames(userDataDir) {
   const file = statePath(userDataDir);
-  if (!existsSync(file)) return;
-  let names = [];
+  if (!existsSync(file)) return null;
   try {
-    names = JSON.parse(readFileSync(file, "utf8"));
-  } catch {}
-  for (const name of names) {
-    const enable = runPowerShell(`Enable-NetAdapter -Name '${name.replace(/'/g, "''")}' -Confirm:$false`);
-    logger(`[killswitch] re-enabled adapter "${name}" (exit=${enable.status})`, enable.stderr || "");
+    return JSON.parse(readFileSync(file, "utf8"));
+  } catch {
+    return [];
   }
+}
+
+// One PowerShell process for all adapters (each start costs ~0.4 s).
+function enableScript(names) {
+  return names.map((n) => `Enable-NetAdapter -Name '${String(n).replace(/'/g, "''")}' -Confirm:$false; Write-Output ("enabled|" + $LASTEXITCODE)`).join("; ");
+}
+
+function finishRestore(userDataDir, names, stdout, stderr, logger) {
+  logger(`[killswitch] re-enabled ${names.length} adapter(s)`, (stderr || "").trim());
   try {
-    unlinkSync(file);
+    unlinkSync(statePath(userDataDir));
   } catch {}
+}
+
+export function restore(userDataDir, logger = console.error) {
+  const names = savedAdapterNames(userDataDir);
+  if (names === null) return;
+  const result = names.length ? runPowerShell(enableScript(names)) : { stdout: "", stderr: "" };
+  finishRestore(userDataDir, names, result.stdout, result.stderr, logger);
+}
+
+// Same, without blocking the process: a user's click on "disconnect" must not wait
+// for PowerShell. Resolves when the adapters are back and the state file is gone.
+export function restoreAsync(userDataDir, logger = console.error) {
+  const names = savedAdapterNames(userDataDir);
+  if (names === null) return Promise.resolve();
+  if (!names.length) {
+    finishRestore(userDataDir, names, "", "", logger);
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    execFile(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-Command", enableScript(names)],
+      { encoding: "utf8", windowsHide: true },
+      (err, stdout, stderr) => {
+        finishRestore(userDataDir, names, stdout, stderr || (err ? err.message : ""), logger);
+        resolve();
+      }
+    );
+  });
 }
 
 export function isEngaged(userDataDir) {

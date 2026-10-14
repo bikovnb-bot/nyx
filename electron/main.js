@@ -219,6 +219,9 @@ const geoResolver = createGeoResolver({
 const countryOf = (profile) => profileCountryWithGeo(profile, geoCache);
 
 let killSwitchActive = false;
+// The adapters the kill switch disabled are coming back (asynchronously); a new
+// connection waits for it, because it needs the network.
+let killRestore = null;
 let userInitiatedDisconnect = false;
 let isQuitting = false;
 const TUN_INTERFACE_NAME = "vlessvpn0";
@@ -281,9 +284,18 @@ function disconnect() {
   connecting = false;
   connectedAt = null;
   if (killSwitchActive) {
-    killswitch.restore(userDataDir(), log);
     killSwitchActive = false;
-    notify("Kill switch", "Сеть восстановлена.");
+    // On quit the process may end before an asynchronous restore finishes, so it
+    // is synchronous there; a click on "disconnect" does not wait for PowerShell.
+    if (isQuitting) {
+      killswitch.restore(userDataDir(), log);
+      notify("Kill switch", "Сеть восстановлена.");
+    } else {
+      killRestore = killswitch.restoreAsync(userDataDir(), log).then(() => {
+        killRestore = null;
+        notify("Kill switch", "Сеть восстановлена.");
+      });
+    }
   }
   broadcastState();
 }
@@ -389,7 +401,16 @@ function connect(profile) {
     startXrayThenTunnel(profile, parsed, settings, token);
     return true;
   }
-  return startSingBoxTunnel(profile, parsed, settings, null);
+  startSingBoxTunnel(profile, parsed, settings, null).catch((err) => {
+    log("tunnel start failed:", err.stack || err.message);
+    notify("Не удалось запустить подключение", err.message);
+    if (token === connectToken) {
+      activeProfileId = null;
+      connecting = false;
+      broadcastState();
+    }
+  });
+  return true;
 }
 
 // Xray first (it needs the server's address resolved while the network is still
@@ -405,6 +426,7 @@ async function startXrayThenTunnel(profile, parsed, settings, token) {
   };
 
   try {
+    if (killRestore) await killRestore;
     const host = parsed.host.replace(/^\[|\]$/g, "");
     let serverIp = host;
     if (!isIP(host)) {
@@ -459,7 +481,7 @@ async function startXrayThenTunnel(profile, parsed, settings, token) {
     }
     if (token !== connectToken) return;
 
-    startSingBoxTunnel(profile, parsed, settings, { port, auth, serverIps: [serverIp], processNames: [XRAY_BINARY_NAME] });
+    await startSingBoxTunnel(profile, parsed, settings, { port, auth, serverIps: [serverIp], processNames: [XRAY_BINARY_NAME] });
   } catch (err) {
     log("xray start failed:", err.stack || err.message);
     abort("Не удалось запустить Xray", err.message);
@@ -468,8 +490,15 @@ async function startXrayThenTunnel(profile, parsed, settings, token) {
 
 // `upstream`: null when sing-box connects to the server itself, otherwise the
 // local SOCKS port of the core that does (see buildSingBoxConfig).
-function startSingBoxTunnel(profile, parsed, settings, upstream) {
-  const defaultInterfaceName = getDefaultInterfaceName();
+async function startSingBoxTunnel(profile, parsed, settings, upstream) {
+  // The lookup is asynchronous (it used to block the window for ~1.7 s), so the
+  // profile is marked first and the user may disconnect or switch while it runs.
+  const token = connectToken;
+  activeProfileId = profile.id;
+  broadcastState();
+  if (killRestore) await killRestore;
+  const defaultInterfaceName = await getDefaultInterfaceName();
+  if (token !== connectToken) return false;
   log("default network interface for split routing:", defaultInterfaceName);
   const config = buildSingBoxConfig(parsed, {
     interfaceName: TUN_INTERFACE_NAME,
@@ -1444,6 +1473,9 @@ function updateTrayIcon() {
   tray.setToolTip(active ? `Nyx: подключено — ${active.name}${code ? ` (${code.toUpperCase()})` : ""}` : "Nyx: отключено");
   tray.setContextMenu(buildTrayMenu());
 }
+
+// The profiles are decrypted in the background while Electron starts up.
+if (startedElevated) profileStore().preload();
 
 app.whenReady().then(() => {
   if (!startedElevated) {

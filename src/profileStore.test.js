@@ -134,3 +134,28 @@ test("returns an empty list if decryption fails, without crashing", () => {
     assert.deepEqual(reopened.load(), []);
   });
 });
+
+test("preload fills the cache in the background, so the first load() does not decrypt", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "nyx-profiles-preload-"));
+  try {
+    let syncCalls = 0;
+    let asyncCalls = 0;
+    const codec = (n) => Buffer.from(n);
+    const crypto = {
+      protect: (b) => Buffer.from(b),
+      unprotect: (b) => { syncCalls++; return Buffer.from(b); },
+      unprotectAsync: async (b) => { asyncCalls++; return Buffer.from(b); },
+    };
+    const first = createProfileStore(dir, { crypto }, () => {});
+    first.save([{ id: "a", name: "A", link: "vless://x@h:1#A" }]);
+    const second = createProfileStore(dir, { crypto }, () => {});
+    await second.preload();
+    assert.equal(asyncCalls, 1);
+    assert.deepEqual(second.load().map((p) => p.id), ["a"]);
+    assert.equal(syncCalls, 0, "load() used the preloaded cache");
+    await second.preload();
+    assert.equal(asyncCalls, 1, "a valid cache is not decrypted again");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

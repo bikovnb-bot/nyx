@@ -26,7 +26,8 @@
     favorites: [],
     lastProfileId: null,
     stats: { days: {}, profiles: {} },
-    subscriptions: [],       // { id, url, name, updatedAt }
+    subscriptions: [],       // { id, url, name, updatedAt, usage? }
+    collapsedGroups: [],     // ids of folded groups
     settings: {
       theme: "dark",
       dns: { provider: "cloudflare", custom: "" },
@@ -156,20 +157,42 @@
     return { added, skipped };
   }
 
-  async function addSubscription(url) {
+  // The native HTTP client of Capacitor, unlike the WebView's fetch, is not held
+  // back by CORS and returns every response header (Profile-Title and
+  // Subscription-Userinfo carry the subscription's name and traffic). Plain fetch
+  // stays as the fallback.
+  async function getSubscription(url) {
+    const http = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorHttp;
+    if (http) {
+      try {
+        const r = await http.request({ url, method: "GET", headers: { "User-Agent": "Nyx-Android" }, responseType: "text" });
+        const headers = {};
+        for (const k of Object.keys(r.headers || {})) headers[k.toLowerCase()] = r.headers[k];
+        return { ok: r.status >= 200 && r.status < 300, status: r.status, body: typeof r.data === "string" ? r.data : JSON.stringify(r.data), header: (n) => headers[n] ?? null };
+      } catch (e) { /* fall back to fetch */ }
+    }
     const res = await fetch(url, { headers: { "User-Agent": "Nyx-Android" } });
+    return { ok: res.ok, status: res.status, body: await res.text(), header: (n) => res.headers.get(n) };
+  }
+
+  async function addSubscription(url) {
+    const res = await getSubscription(url);
     if (!res.ok) throw new Error("Сервер подписки ответил " + res.status);
-    const body = await res.text();
+    const body = res.body;
     const parsed = core.parseSubscription(body);
     const links = parsed.links;
     if (!links.length) throw new Error("В подписке нет ссылок vless://");
+    const headerTitle = core.parseProfileTitle(res.header("profile-title"));
+    const usage = core.parseUserinfo(res.header("subscription-userinfo"));
     let sub = data.subscriptions.find((s) => s.url === url);
+    if (sub && headerTitle) sub.name = headerTitle; // the name belongs to the server
     if (!sub) {
       let name = url;
       try { name = new URL(url).hostname; } catch (e) {}
-      sub = { id: uid(), url, name, updatedAt: 0 };
+      sub = { id: uid(), url, name: headerTitle || name, updatedAt: 0 };
       data.subscriptions.push(sub);
     }
+    if (usage) sub.usage = usage;
     const existing = data.profiles.filter((p) => p.subscriptionId === sub.id);
     const otherKeys = new Set(data.profiles.filter((p) => p.subscriptionId !== sub.id).map((p) => core.linkKey(p.link)));
     const plan = core.planSubscriptionSync(existing, links, otherKeys);
@@ -193,13 +216,33 @@
     } catch (e) { return ["?", ""]; }
   }
 
+  // Traffic of a subscription inside its header: "19 ГБ из 50 ГБ", a bar that turns
+  // amber and red as the limit nears, and the expiry date on the right.
+  function usageHtml(u) {
+    const fmt = (n) => {
+      const units = ["Б", "КБ", "МБ", "ГБ", "ТБ"];
+      let v = n, i = 0;
+      while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+      return (i === 0 || v >= 100 ? Math.round(v) : v.toFixed(1)).toString().replace(".", ",") + " " + units[i];
+    };
+    const pct = u.total ? Math.min(100, Math.round((u.used / u.total) * 100)) : 0;
+    const level = pct >= 90 ? "high" : pct >= 70 ? "mid" : "ok";
+    let exp = "";
+    if (u.expire) {
+      const days = Math.ceil((u.expire - Date.now()) / 86400000);
+      exp = days < 0 ? "истекла" : days === 0 ? "сегодня последний день" : days + " дн.";
+    }
+    const text = u.total ? fmt(u.used) + " / " + fmt(u.total) : fmt(u.used);
+    return `<span class="group-usage"><span class="usage-text">${esc(text)}${exp ? " · " + esc(exp) : ""}</span>${u.total ? `<span class="usage-bar"><i class="${level}" style="width:${pct}%"></i></span>` : ""}</span>`;
+  }
+
   function renderList() {
     const profiles = core.sortWithFavorites(data.profiles, data.favorites);
     const active = state === "started" || state === "starting" ? data.lastProfileId : null;
     $("count").textContent = profiles.length ? String(profiles.length) : "";
     geoResolver.queue(profiles);
     $("empty").hidden = profiles.length > 0;
-    $("list").innerHTML = profiles.map((p) => {
+    const itemHtml = (p) => {
       const cc = core.profileCountryWithGeo(p, geoCache);
       const flag = cc && core.AVAILABLE_FLAGS.has(cc) ? `<img class="flag" src="flags/${esc(cc)}.svg" alt="" />` : `<div class="flag none">🌐</div>`;
       const [tag, cls] = typeTag(p.link);
@@ -211,10 +254,28 @@
         <button class="star ${fav ? "on" : ""}" data-fav="${esc(p.id)}" aria-label="Избранное"><svg viewBox="0 0 24 24" fill="${fav ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.9L12 17.8 5.8 21l1.2-6.9-5-4.9 6.9-1z"/></svg></button>
         <button class="more" data-more="${esc(p.id)}" aria-label="Меню">⋮</button>
       </div>`;
+    };
+    const withFav = profiles.map((p) => ({ ...p, favorite: data.favorites.includes(p.id) }));
+    const groups = core.buildGroups(withFav, data.subscriptions, { collapsed: data.collapsedGroups, activeProfileId: active });
+    const single = groups.length === 1 && groups[0].kind === "manual";
+    $("list").innerHTML = groups.map((g) => {
+      const items = g.profiles.map(itemHtml).join("");
+      if (single) return items;
+      const activeName = g.collapsed && g.hasActive ? ((g.profiles.find((p) => p.id === active) || {}).name || "") : "";
+      const info = g.kind === "subscription" && g.error ? `<div class="group-info error">${esc(g.error)}</div>` : "";
+      const usage = g.kind === "subscription" && g.usage ? usageHtml(g.usage) : "";
+      return `<div class="group-head${g.collapsed ? " collapsed" : ""}${g.hasActive ? " has-active" : ""}" data-group="${esc(g.id)}">
+        <svg class="group-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        <span class="group-name">${esc(g.name)}</span><span class="group-count">${g.count}</span>
+        ${activeName ? `<span class="group-active">● ${esc(activeName)}</span>` : ""}
+        ${usage}
+      </div>${info}<div class="group-body${g.collapsed ? " hidden" : ""}">${items}</div>`;
     }).join("");
   }
 
   $("list").addEventListener("click", (e) => {
+    const head = e.target.closest("[data-group]");
+    if (head) { toggleGroup(head.dataset.group); return; }
     const fav = e.target.closest("[data-fav]");
     if (fav) { toggleFav(fav.dataset.fav); return; }
     const more = e.target.closest("[data-more]");
@@ -222,6 +283,12 @@
     const item = e.target.closest(".item");
     if (item) connect(item.dataset.id);
   });
+
+  function toggleGroup(id) {
+    data.collapsedGroups = data.collapsedGroups.includes(id) ? data.collapsedGroups.filter((x) => x !== id) : [...data.collapsedGroups, id];
+    save();
+    renderList();
+  }
 
   function toggleFav(id) {
     data.favorites = data.favorites.includes(id) ? data.favorites.filter((x) => x !== id) : [...data.favorites, id];
@@ -358,6 +425,30 @@
   }
   $("itemConnect").addEventListener("click", () => { closeSheets(); connect(sheetProfileId); });
   $("itemFav").addEventListener("click", () => { toggleFav(sheetProfileId); closeSheets(); });
+  let renameTarget = null;
+  function openRename(target, current) {
+    renameTarget = target;
+    closeSheets();
+    $("renameInput").value = current;
+    openSheet("renameSheet");
+    setTimeout(() => { $("renameInput").focus(); $("renameInput").select(); }, 250);
+  }
+  $("itemRename").addEventListener("click", () => {
+    const p = data.profiles.find((x) => x.id === sheetProfileId);
+    if (p) openRename({ profile: p.id }, p.name);
+  });
+  function saveRename() {
+    const name = $("renameInput").value.trim();
+    const t = renameTarget;
+    if (t && name) {
+      const item = data.profiles.find((x) => x.id === t.profile);
+      if (item) { item.name = name; save(); renderList(); }
+    }
+    renameTarget = null;
+    closeSheets();
+  }
+  $("renameConfirm").addEventListener("click", saveRename);
+  $("renameInput").addEventListener("keydown", (e) => { if (e.key === "Enter") saveRename(); });
   $("itemCopy").addEventListener("click", async () => {
     const p = data.profiles.find((x) => x.id === sheetProfileId);
     try { await clipWrite(p.link); toast("Ссылка скопирована", "success"); }

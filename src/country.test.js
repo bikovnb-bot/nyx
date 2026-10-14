@@ -57,3 +57,10 @@ test("every country in the table has a bundled flag", () => {
     assert.ok(AVAILABLE_FLAGS.has(code), `${code} not in AVAILABLE_FLAGS`);
   }
 });
+
+test("the .ru of a domain is not a country: a profile named after its host stays unknown", async () => {
+  const { profileCountryCode } = await import("./country.js");
+  const link = "vless://id@cloud.example.ru:443?type=ws#cloud.example.ru";
+  assert.equal(profileCountryCode({ name: "cloud.example.ru", link }), null);
+  assert.equal(profileCountryCode({ name: "Russia", link }), "ru");
+});

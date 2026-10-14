@@ -80,8 +80,13 @@ export function emojiFlagCode(text) {
   return String.fromCharCode(97 + ri[0] - 0x1f1e6, 97 + ri[1] - 0x1f1e6);
 }
 
+// The top-level domain is not a country hint: ".ru" in "cloud.example.ru" says
+// nothing about where the server is, and a profile named after its host would
+// otherwise always look Russian. Domain-like pieces of the name are dropped too.
+const DOMAIN_LIKE = /[a-z0-9-]+(\.[a-z0-9-]+)+/gi;
+
 function matchByWords(host, text) {
-  const hay = (text + " " + host).toLowerCase();
+  const hay = (text.replace(DOMAIN_LIKE, " ") + " " + String(host).replace(/\.[^.]+$/, "")).toLowerCase();
   const tokens = hay.split(/[^a-zа-яё0-9]+/).filter(Boolean);
   const hit = COUNTRIES.find((c) => c.words.some((w) => (w.length <= 3 ? tokens.includes(w) : hay.includes(w))));
   return hit ? hit.code : null;

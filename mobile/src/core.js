@@ -9,6 +9,7 @@ export { parseVlessLink, DNS_PROVIDERS };
 export { parseSubscription, decodeSubscriptionBody, planSubscriptionSync, linkKey, nameFromLink } from "../../src/subscription.js";
 export { profileCountryCode, hostOf, emojiFlagCode, AVAILABLE_FLAGS } from "../../src/country.js";
 export { GEO_URL, parseGeoCountry, profileCountryWithGeo, createGeoResolver } from "../../src/geoCountry.js";
+export { buildGroups, parseProfileTitle, parseUserinfo, formatUsage } from "../../src/subscriptionGroups.js";
 export { sortWithFavorites } from "../../src/selection.js";
 export { explainSingBoxLine } from "../../src/errorHints.js";
 export { parseIpInfo, leakVerdict, describeDns, IP_INFO_URL } from "../../src/leakCheck.js";

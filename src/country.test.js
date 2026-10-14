@@ -39,3 +39,21 @@ test("every flag we claim to have exists as a bundled SVG", () => {
   const missing = [...AVAILABLE_FLAGS].filter((c) => !files.has(`${c}.svg`));
   assert.deepEqual(missing, []);
 });
+
+test("countries beyond the first few are recognized too, but ordinary words are not", () => {
+  assert.equal(profileCountryCode({ name: "Romania fast", link: link("x") }), "ro");
+  assert.equal(profileCountryCode({ name: "Тимишоара", link: link("x") }), "ro");
+  assert.equal(profileCountryCode({ name: "Hong Kong 2", link: link("x") }), "hk");
+  assert.equal(profileCountryCode({ name: "no limits, in use, at home", link: link("x") }), null);
+});
+
+test("every country in the table has a bundled flag", () => {
+  const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "electron", "assets", "flags");
+  const files = new Set(readdirSync(dir));
+  for (const name of ["Romania", "Ukraine", "Belarus", "Austria", "Belgium", "Norway", "Ireland", "India", "Georgia", "Armenia", "Azerbaijan", "Dubai", "Brazil", "Sydney"]) {
+    const code = profileCountryCode({ name, link: link("x") });
+    assert.ok(code, `${name} has no country`);
+    assert.ok(files.has(`${code}.svg`), `no flag file for ${code}`);
+    assert.ok(AVAILABLE_FLAGS.has(code), `${code} not in AVAILABLE_FLAGS`);
+  }
+});

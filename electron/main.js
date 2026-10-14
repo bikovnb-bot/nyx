@@ -23,7 +23,8 @@ import { verifySingBoxBinary } from "../src/singboxIntegrity.js";
 import { redactVlessLink } from "../src/redact.js";
 import { getDefaultInterfaceName } from "../src/networkInterface.js";
 import { randomUUID } from "node:crypto";
-import { profileCountryCode } from "../src/country.js";
+import { lookup as dnsLookup } from "node:dns/promises";
+import { GEO_URL, parseGeoCountry, profileCountryWithGeo, createGeoResolver } from "../src/geoCountry.js";
 import { createTrafficStats } from "../src/trafficStats.js";
 import { parseSubscription, planSubscriptionSync, linkKey } from "../src/subscription.js";
 import { createSubscriptionStore } from "../src/subscriptionStore.js";
@@ -33,6 +34,7 @@ import { explainSingBoxLine, createIssueThrottle } from "../src/errorHints.js";
 import { IP_INFO_URL, parseIpInfo, leakVerdict, describeDns } from "../src/leakCheck.js";
 import { refreshRules, pickRulesDir } from "../src/rulesUpdate.js";
 import { runSpeedtest } from "../src/speedtest.js";
+import { summarizeUpdaterError, createRetryPolicy } from "../src/updaterErrors.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -169,6 +171,46 @@ const trafficStats = createTrafficStats(app.getPath("userData"), { logger: (...a
 function settingsStore() {
   return createSettingsStore(userDataDir(), (...args) => log("[settingsStore]", ...args));
 }
+
+// Country for profiles whose name does not say where the server is: looked up
+// once from the server's IP address and remembered (see src/geoCountry.js).
+const GEO_CACHE_FILE = path.join(app.getPath("userData"), "geo-cache.json");
+function loadGeoCache() {
+  try {
+    const raw = JSON.parse(readFileSync(GEO_CACHE_FILE, "utf8"));
+    return raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  } catch {
+    return {};
+  }
+}
+const geoCache = loadGeoCache();
+const geoResolver = createGeoResolver({
+  cache: geoCache,
+  save: (cache) => {
+    try {
+      writeFileSync(GEO_CACHE_FILE, JSON.stringify(cache), "utf8");
+    } catch (err) {
+      log("[geo] cannot save cache:", err.message);
+    }
+  },
+  resolveHost: async (host) => (await dnsLookup(host, { family: 4 })).address,
+  fetchCountry: async (ip) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    try {
+      const res = await net.fetch(GEO_URL(ip), { signal: controller.signal, headers: { "User-Agent": `Nyx/${app.getVersion()}` } });
+      if (!res.ok) throw new Error(`geolocation HTTP ${res.status}`);
+      return parseGeoCountry(await res.json());
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+  onChange: () => {
+    broadcastState();
+    updateTrayIcon();
+  },
+});
+const countryOf = (profile) => profileCountryWithGeo(profile, geoCache);
 
 let killSwitchActive = false;
 let userInitiatedDisconnect = false;
@@ -616,15 +658,21 @@ autoUpdater.autoInstallOnAppQuit = false;
 autoUpdater.logger = {
   info: (...args) => log("[updater]", ...args),
   warn: (...args) => log("[updater] WARN:", ...args),
-  error: (...args) => log("[updater] ERROR:", ...args),
+  // The "error" event below logs a failure once, in one line; electron-updater
+  // would otherwise dump the whole releases feed here as well.
+  error: () => {},
 };
 
 autoUpdater.on("checking-for-update", () => setUpdateState({ status: "checking" }));
 autoUpdater.on("update-available", (info) => {
+  updateRetry.reset();
   setUpdateState({ status: "available", version: info.version });
   notify("Доступно обновление", `Nyx ${info.version} загружается в фоне`);
 });
-autoUpdater.on("update-not-available", () => setUpdateState({ status: "not-available" }));
+autoUpdater.on("update-not-available", () => {
+  updateRetry.reset();
+  setUpdateState({ status: "not-available" });
+});
 autoUpdater.on("download-progress", (progress) => {
   setUpdateState({ status: "downloading", percent: Math.round(progress.percent) });
 });
@@ -632,9 +680,22 @@ autoUpdater.on("update-downloaded", (info) => {
   setUpdateState({ status: "downloaded", version: info.version });
   notify("Обновление готово", `Nyx ${info.version} установится при перезапуске`);
 });
+// A dropped connection (VPN switching, DNS not ready yet) is not an update
+// problem: retry quietly a few times instead of showing an error.
+const updateRetry = createRetryPolicy();
+let updateRetryTimer = null;
 autoUpdater.on("error", (err) => {
-  setUpdateState({ status: "error", message: err.message });
-  log("[updater] error:", err.stack || err.message);
+  const summary = summarizeUpdaterError(err);
+  const delay = updateRetry.next(err);
+  if (delay !== null) {
+    log(`[updater] network error, retry ${updateRetry.attempts} in ${Math.round(delay / 1000)}s: ${summary}`);
+    clearTimeout(updateRetryTimer);
+    updateRetryTimer = setTimeout(checkForUpdates, delay);
+    setUpdateState({ status: "idle" });
+    return;
+  }
+  log("[updater] error:", summary);
+  setUpdateState({ status: "error", message: summary });
 });
 
 function checkForUpdates() {
@@ -642,9 +703,8 @@ function checkForUpdates() {
     setUpdateState({ status: "not-available" });
     return;
   }
-  autoUpdater.checkForUpdates().catch((err) => {
-    setUpdateState({ status: "error", message: err.message });
-  });
+  // electron-updater emits "error" for every failure, handled above.
+  autoUpdater.checkForUpdates().catch(() => {});
 }
 
 function getState() {
@@ -656,10 +716,11 @@ function getState() {
     log("getState: profileStore().load() THREW:", err.stack || err.message);
     profiles = [];
   }
+  geoResolver.queue(profiles);
   const favorites = new Set(settings.favorites);
   profiles = sortWithFavorites(profiles, settings.favorites).map((p) => ({
     ...p,
-    country: profileCountryCode(p),
+    country: countryOf(p),
     favorite: favorites.has(p.id),
   }));
   return {
@@ -1120,7 +1181,7 @@ function buildTrayMenu() {
   const profiles = sortWithFavorites(profileStore().load(), settings.favorites);
   const active = profiles.find((p) => p.id === activeProfileId);
   const flagIcon = (p) => {
-    const c = profileCountryCode(p);
+    const c = countryOf(p);
     if (!c) return undefined;
     const img = nativeImage.createFromPath(path.join(__dirname, "assets", "flags-png", `${c}.png`));
     return img.isEmpty() ? undefined : img.resize({ width: 20, height: 15 });
@@ -1209,7 +1270,7 @@ function updateTrayIcon() {
   if (!tray) return;
   tray.setImage(activeProfileId ? ICON_CONNECTED : ICON_DISCONNECTED);
   const active = activeProfileId ? profileStore().load().find((p) => p.id === activeProfileId) : null;
-  const code = active ? profileCountryCode(active) : null;
+  const code = active ? countryOf(active) : null;
   tray.setToolTip(active ? `Nyx: подключено — ${active.name}${code ? ` (${code.toUpperCase()})` : ""}` : "Nyx: отключено");
   tray.setContextMenu(buildTrayMenu());
 }

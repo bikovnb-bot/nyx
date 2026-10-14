@@ -56,6 +56,20 @@
     try { localStorage.setItem("nyx.data", JSON.stringify(data)); } catch (e) {}
   }
 
+  // Country of a server whose profile name does not say it: looked up once from the
+  // server's IP address and remembered (the same logic as on the desktop).
+  const geoCache = (() => { try { return JSON.parse(localStorage.getItem("nyx.geo") || "{}") || {}; } catch (e) { return {}; } })();
+  const geoResolver = core.createGeoResolver({
+    cache: geoCache,
+    save: (c) => { try { localStorage.setItem("nyx.geo", JSON.stringify(c)); } catch (e) {} },
+    fetchCountry: async (ip) => {
+      const r = await fetch(core.GEO_URL(ip));
+      if (!r.ok) throw new Error("geolocation HTTP " + r.status);
+      return core.parseGeoCountry(await r.json());
+    },
+    onChange: () => renderList(),
+  });
+
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
   const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -183,9 +197,10 @@
     const profiles = core.sortWithFavorites(data.profiles, data.favorites);
     const active = state === "started" || state === "starting" ? data.lastProfileId : null;
     $("count").textContent = profiles.length ? String(profiles.length) : "";
+    geoResolver.queue(profiles);
     $("empty").hidden = profiles.length > 0;
     $("list").innerHTML = profiles.map((p) => {
-      const cc = core.profileCountryCode(p);
+      const cc = core.profileCountryWithGeo(p, geoCache);
       const flag = cc && core.AVAILABLE_FLAGS.has(cc) ? `<img class="flag" src="flags/${esc(cc)}.svg" alt="" />` : `<div class="flag none">🌐</div>`;
       const [tag, cls] = typeTag(p.link);
       const fav = data.favorites.includes(p.id);

@@ -94,6 +94,21 @@ export function formatUsage(info) {
   return parts.join(" · ");
 }
 
+// What a group header shows next to its name: "19,2 / 50 ГБ · 38 дн.", how full
+// the limit is (0-100, null without a limit) and a level for the bar's colour.
+export function formatUsageBar(info, now = Date.now()) {
+  if (!info) return null;
+  const text = info.total ? `${formatBytes(info.used)} / ${formatBytes(info.total)}` : formatBytes(info.used);
+  let left = "";
+  if (info.expire) {
+    const days = Math.ceil((info.expire - now) / 86400000);
+    left = days < 0 ? "истекла" : days === 0 ? "сегодня последний день" : `${days} дн.`;
+  }
+  const percent = info.total ? Math.min(100, Math.round((info.used / info.total) * 100)) : null;
+  const level = percent === null ? "ok" : percent >= 90 ? "high" : percent >= 70 ? "mid" : "ok";
+  return { text: left ? `${text} · ${left}` : text, percent, level };
+}
+
 // ---------------------------------------------------------------- grouping
 
 // profiles: [{ id, name, subscriptionId?, favorite? }]

@@ -37,7 +37,7 @@ import { IP_INFO_URL, parseIpInfo, leakVerdict, describeDns } from "../src/leakC
 import { refreshRules, pickRulesDir } from "../src/rulesUpdate.js";
 import { runSpeedtest } from "../src/speedtest.js";
 import { summarizeUpdaterError, createRetryPolicy } from "../src/updaterErrors.js";
-import { parseProfileTitle, parseUserinfo, formatUsage, buildGroups } from "../src/subscriptionGroups.js";
+import { parseProfileTitle, parseUserinfo, formatUsage, formatUsageBar, buildGroups } from "../src/subscriptionGroups.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -222,6 +222,13 @@ let killSwitchActive = false;
 // The adapters the kill switch disabled are coming back (asynchronously); a new
 // connection waits for it, because it needs the network.
 let killRestore = null;
+function restoreNetworkAsync(onDone) {
+  killRestore = killswitch.restoreAsync(userDataDir(), log).then(() => {
+    killRestore = null;
+    if (onDone) onDone();
+  });
+  return killRestore;
+}
 let userInitiatedDisconnect = false;
 let isQuitting = false;
 const TUN_INTERFACE_NAME = "vlessvpn0";
@@ -291,10 +298,7 @@ function disconnect() {
       killswitch.restore(userDataDir(), log);
       notify("Kill switch", "Сеть восстановлена.");
     } else {
-      killRestore = killswitch.restoreAsync(userDataDir(), log).then(() => {
-        killRestore = null;
-        notify("Kill switch", "Сеть восстановлена.");
-      });
+      restoreNetworkAsync(() => notify("Kill switch", "Сеть восстановлена."));
     }
   }
   broadcastState();
@@ -712,7 +716,7 @@ function applySettings(partial) {
   const next = settingsStore().update(partial);
   // Kill switch being turned off should immediately lift any active block.
   if (!next.killSwitchEnabled && killSwitchActive) {
-    killswitch.restore(userDataDir(), log);
+    restoreNetworkAsync();
     killSwitchActive = false;
   }
   broadcastState();
@@ -894,6 +898,7 @@ function getState() {
     groups: buildGroups(profiles, subscriptions, { collapsed: settings.collapsedGroups, activeProfileId }).map((g) => ({
       ...g,
       usageText: formatUsage(g.usage),
+      usageBar: formatUsageBar(g.usage),
     })),
   };
 }
@@ -1486,7 +1491,7 @@ app.whenReady().then(() => {
   loadSingBoxVersion();
   if (killswitch.isEngaged(userDataDir())) {
     log("[killswitch] stale engaged state found at startup, restoring network");
-    killswitch.restore(userDataDir(), log);
+    restoreNetworkAsync();
   }
   try {
     tray = new Tray(ICON_DISCONNECTED);

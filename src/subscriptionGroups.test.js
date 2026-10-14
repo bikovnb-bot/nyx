@@ -110,3 +110,16 @@ test("groups: an empty subscription is listed when nothing is filtered", () => {
   assert.deepEqual(g.map((x) => x.id), ["sub-a", "sub-b", "sub-empty"]);
   assert.equal(g[0].count, 0);
 });
+
+test("the group header shows usage compactly with a coloured level", async () => {
+  const { formatUsageBar } = await import("./subscriptionGroups.js");
+  const GB = 1024 ** 3;
+  const day = 86400000;
+  const now = Date.UTC(2026, 9, 14);
+  assert.equal(formatUsageBar(null, now), null);
+  assert.deepEqual(formatUsageBar({ used: 10 * GB, total: 50 * GB, expire: now + 38 * day }, now), { text: "10 ГБ / 50 ГБ · 38 дн.", percent: 20, level: "ok" });
+  assert.equal(formatUsageBar({ used: 40 * GB, total: 50 * GB, expire: null }, now).level, "mid");
+  assert.equal(formatUsageBar({ used: 48 * GB, total: 50 * GB, expire: null }, now).level, "high");
+  assert.deepEqual(formatUsageBar({ used: 2 * GB, total: 0, expire: null }, now), { text: "2 ГБ", percent: null, level: "ok" });
+  assert.match(formatUsageBar({ used: 1, total: 10, expire: now - day }, now).text, /истекла/);
+});

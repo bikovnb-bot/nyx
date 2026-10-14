@@ -579,6 +579,12 @@
     color: var(--text-strong); background: rgba(var(--ink), 0.08);
     border: 1px solid rgba(139, 92, 246, 0.5); border-radius: 6px; padding: 2px 6px; outline: none;
   }
+  .group-usage { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; margin-left: auto; }
+  .usage-text { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+  .usage-bar { width: 96px; height: 4px; border-radius: 2px; background: rgba(var(--ink), 0.1); overflow: hidden; }
+  .usage-bar i { display: block; height: 100%; border-radius: 2px; background: #10b981; }
+  .usage-bar i.mid { background: #f59e0b; }
+  .usage-bar i.high { background: #ef4444; }
   .group-info { font-size: 11px; color: var(--text-dim); padding: 2px 12px 0 32px; }
   .group-info.error { color: var(--danger); }
   .group-body { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; }
@@ -2738,10 +2744,15 @@
       trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>',
     };
 
+    // Traffic in the header of a subscription: "19,2 / 50 ГБ · 38 дн." and a thin bar
+    // that turns amber and red as the limit comes near (no bar without a limit).
+    function usageBarHtml(u) {
+      return `<div class="group-usage" title="Расход трафика подписки"><span class="usage-text">${escapeHtml(u.text)}</span>${u.percent === null ? "" : `<span class="usage-bar"><i class="${u.level}" style="width:${u.percent}%"></i></span>`}</div>`;
+    }
+
     function groupInfoText(g) {
       const parts = [];
       if (g.updatedAt) parts.push("обновлена " + new Date(g.updatedAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }));
-      if (g.usageText) parts.push(g.usageText);
       return parts.join(" · ");
     }
 
@@ -2760,6 +2771,7 @@
           <span class="group-count">${g.count}</span>
           ${activeName ? `<span class="group-active">● ${escapeHtml(activeName)}</span>` : ""}
         </div>
+        ${isSub && g.usageBar ? usageBarHtml(g.usageBar) : ""}
         ${isSub ? `<div class="group-actions">
           <button class="group-act g-refresh" title="Обновить подписку">${ICON.refresh}</button>
           <button class="group-act g-del" title="Удалить подписку и её серверы">${ICON.trash}</button>

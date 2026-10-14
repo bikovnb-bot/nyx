@@ -1,6 +1,6 @@
 {
   "name": "nyx-mobile",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
   "license": "GPL-3.0-or-later",
   "description": "Nyx for Android (Capacitor shell around the Nyx web UI and sing-box libbox)",
